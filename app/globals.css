@@ -1,0 +1,127 @@
+@import "tailwindcss";
+
+@theme inline {
+  /* Ocean – deep blue base */
+  --color-ocean-950: #061520;
+  --color-ocean-900: #0a2a3d;
+  --color-ocean-800: #0d3350;
+  --color-ocean-700: #124065;
+  --color-ocean-600: #1a6b8a;
+
+  /* Gold – Spanish sun */
+  --color-gold-200: #fce8a8;
+  --color-gold-300: #f9d070;
+  --color-gold-400: #f7bc40;
+  --color-gold-500: #f5a623;
+  --color-gold-600: #d4891a;
+
+  /* Coral – warm accent */
+  --color-coral-400: #f0a070;
+  --color-coral-500: #e8834a;
+  --color-coral-600: #cc6a30;
+
+  /* Teal – cool accent */
+  --color-teal-400: #2a87a8;
+  --color-teal-500: #1a6b8a;
+  --color-teal-600: #145b76;
+
+  /* Typography */
+  --font-sans:    var(--font-inter),    system-ui, sans-serif;
+  --font-serif:   var(--font-playfair), Georgia, serif;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html { scroll-behavior: smooth; scroll-padding-top: 6rem; }
+
+body {
+  background-color: #0a2a3d;
+  color: #ffffff;
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.font-serif { font-family: var(--font-serif); }
+
+::selection { background-color: #f5a623; color: #0a2a3d; }
+
+::-webkit-scrollbar { width: 5px; }
+::-webkit-scrollbar-track { background: #0a2a3d; }
+::-webkit-scrollbar-thumb { background: #1a6b8a; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #f5a623; }
+
+/* Sign-in page hides the navbar and removes its padding offset */
+body.hide-nav nav { display: none !important; }
+body.hide-nav main { padding-top: 0 !important; }
+
+/* ═══════════════════════════════════════════════════════════════════
+   LIGHT MODE (SUN TOGGLE)
+   Card selector: [style*="blur("] — every card uses backdropFilter
+   'blur(12px)' or 'blur(20px)', which browsers never normalize.
+   backdrop-filter kept: 20% of background shows through 80% white.
+   Navbar barrier handled by the fixed .navbar-barrier div in layout.
+   Color selectors use BOTH hex (SSR-preserved) and rgb() (post-hydration).
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* ── 1. Card backgrounds → white 80% opacity ────────────────────────*/
+html.hc .hc-zone [style*="blur("] {
+  background: rgba(255,255,255,0.80) !important;
+  color: #0a1828 !important;
+}
+
+/* ── 2. Inner panels inside cards → subtle tint ─────────────────────*/
+html.hc .hc-zone [style*="blur("] [style*="rgba(255, 255, 255, 0.04"],
+html.hc .hc-zone [style*="blur("] [style*="rgba(255, 255, 255, 0.06"],
+html.hc .hc-zone [style*="blur("] [style*="rgba(255, 255, 255, 0.07"],
+html.hc .hc-zone [style*="blur("] [style*="rgba(255, 255, 255, 0.08"],
+html.hc .hc-zone [style*="blur("] [style*="rgba(255,255,255,0.04"],
+html.hc .hc-zone [style*="blur("] [style*="rgba(255,255,255,0.06"],
+html.hc .hc-zone [style*="blur("] [style*="rgba(255,255,255,0.07"],
+html.hc .hc-zone [style*="blur("] [style*="rgba(255,255,255,0.08"] {
+  background: rgba(0,0,0,0.06) !important;
+}
+
+/* ── 3. White text → dark ────────────────────────────────────────────*/
+html.hc .hc-zone [style*="blur("] [class*="text-white"] { color: #0a1828 !important; }
+html.hc .hc-zone [style*="blur("] [style*="color: rgba(255, 255, 255"] { color: #0a1828 !important; }
+html.hc .hc-zone [style*="blur("] [style*="color: #fff"],
+html.hc .hc-zone [style*="blur("] [style*="color: rgb(255, 255, 255"] { color: #0a1828 !important; }
+
+/* ── 4. Tier/accent colors → darker for legibility on white ─────────
+   Each pair: hex form (SSR HTML attribute) + rgb() (post-hydration). */
+html.hc .hc-zone [style*="blur("] [style*="#f5a623"],
+html.hc .hc-zone [style*="blur("] [style*="rgb(245, 166, 35"] { color: #b8720a !important; }
+
+html.hc .hc-zone [style*="blur("] [style*="#f9d070"],
+html.hc .hc-zone [style*="blur("] [style*="rgb(249, 208, 112"] { color: #8a6000 !important; }
+
+html.hc .hc-zone [style*="blur("] [style*="#6dd0e8"],
+html.hc .hc-zone [style*="blur("] [style*="rgb(109, 208, 232"] { color: #1a6b8a !important; }
+
+html.hc .hc-zone [style*="blur("] [style*="#6fcf97"],
+html.hc .hc-zone [style*="blur("] [style*="rgb(111, 207, 151"] { color: #1a7a3c !important; }
+
+html.hc .hc-zone [style*="blur("] [style*="#81c784"],
+html.hc .hc-zone [style*="blur("] [style*="rgb(129, 199, 132"] { color: #2d7a3d !important; }
+
+html.hc .hc-zone [style*="blur("] [style*="#ef9a9a"],
+html.hc .hc-zone [style*="blur("] [style*="rgb(239, 154, 154"] { color: #c0392b !important; }
+
+html.hc .hc-zone [style*="blur("] [style*="#f0a070"],
+html.hc .hc-zone [style*="blur("] [style*="rgb(240, 160, 112"] { color: #b84e00 !important; }
+
+/* ── 5. Login/signup: darker placeholders + gold button ─────────────*/
+html.hc .hc-zone [style*="blur("] input::placeholder,
+html.hc .hc-zone [style*="blur("] textarea::placeholder {
+  color: rgba(0,0,0,0.40) !important;
+  opacity: 1;
+}
+html.hc .hc-zone [style*="blur("] [style*="rgba(255, 255, 255, 0.15"],
+html.hc .hc-zone [style*="blur("] [style*="rgba(255,255,255,0.15"],
+html.hc .hc-zone [style*="blur("] [style*="rgba(255, 255, 255, 0.10"],
+html.hc .hc-zone [style*="blur("] [style*="rgba(255,255,255,0.10"] {
+  background: #f5a623 !important;
+  color: #0a2a3d !important;
+  border-color: transparent !important;
+}
