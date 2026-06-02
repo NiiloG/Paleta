@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import { Inter, Playfair_Display } from 'next/font/google'
 import './globals.css'
 import Navbar from '@/components/Navbar'
+import WelcomePopup from '@/components/WelcomePopup'
 import { HcProvider } from '@/lib/hc-context'
 
 const inter = Inter({ variable: '--font-inter', subsets: ['latin'], display: 'swap' })
@@ -10,6 +11,14 @@ const playfair = Playfair_Display({ variable: '--font-playfair', subsets: ['lati
 export const metadata: Metadata = {
   title: 'paleta',
   description: 'Play under the Spanish sun. Join paleta — book courts, organise matches, and climb the rankings on the Costa Blanca.',
+  icons: {
+    icon: [
+      { url: '/favicon.ico', sizes: '48x48', type: 'image/x-icon' },
+      { url: '/icon-192.png', sizes: '192x192', type: 'image/png' },
+      { url: '/icon-512.png', sizes: '512x512', type: 'image/png' },
+    ],
+    apple: { url: '/apple-touch-icon.png', sizes: '192x192', type: 'image/png' },
+  },
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
@@ -54,10 +63,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 
 <HcProvider>
           <Navbar />
-          <main className="flex-1 pt-24 hc-zone">{children}</main>
+          <main className="flex-1 pt-16 lg:pt-24 hc-zone">{children}</main>
           <footer className="border-t border-white/10 py-6 text-center text-white/25 text-xs tracking-widest uppercase">
             © {new Date().getFullYear()} paleta · Costa Blanca
+            {/* Version tag — increment minor on each prompt iteration; bump to v2.000 on production launch */}
+            <span className="ml-3" style={{ color: 'rgba(245,166,35,0.30)', letterSpacing: '0.10em' }}>beta v2.000</span>
           </footer>
+          <WelcomePopup />
         </HcProvider>
 
       </body>

@@ -15,6 +15,26 @@ function formatEventDate(iso: string) {
   }
 }
 
+function matchTypeCfg(mt: string): React.CSSProperties {
+  if (mt === 'Men only')   return { background: 'rgba(59,130,246,0.15)',  border: '0.5px solid rgba(59,130,246,0.35)',  color: '#60a5fa' }
+  if (mt === 'Women only') return { background: 'rgba(244,114,182,0.15)', border: '0.5px solid rgba(244,114,182,0.35)', color: '#f472b6' }
+  return                          { background: 'rgba(245,166,35,0.15)',  border: '0.5px solid rgba(245,166,35,0.35)',  color: '#f5a623' }
+}
+
+function levelCfgByDisplay(val: number) {
+  if (val >= 6.0) return { color: '#f9d070', bg: 'rgba(245,166,35,0.16)',  border: 'rgba(245,166,35,0.35)'  }
+  if (val >= 4.0) return { color: '#ef9a9a', bg: 'rgba(239,83,80,0.14)',   border: 'rgba(239,83,80,0.32)'   }
+  if (val >= 2.0) return { color: '#6dd0e8', bg: 'rgba(42,135,168,0.14)',  border: 'rgba(42,135,168,0.30)'  }
+  return               { color: '#81c784', bg: 'rgba(76,175,80,0.12)',   border: 'rgba(76,175,80,0.28)'   }
+}
+
+function levelPickerLabel(val: number): string {
+  if (val >= 6.0) return 'Expert'
+  if (val >= 4.0) return 'Advanced'
+  if (val >= 2.0) return 'Intermediate'
+  return 'Beginner'
+}
+
 const cardStyle = {
   background: 'rgba(8,20,38,0.50)',
   border: '0.5px solid rgba(255,255,255,0.18)',
@@ -64,86 +84,121 @@ export default async function EventsPage() {
         className="block hover:border-white/30 transition-all"
         style={cardStyle}
       >
-        <div className="flex items-stretch overflow-hidden rounded-[14px]">
-          {/* Date block */}
-          <div
-            className="flex flex-col items-center justify-center px-4 py-5 min-w-[68px] text-center flex-shrink-0"
-            style={{ background: 'rgba(245,166,35,0.12)', borderRight: '0.5px solid rgba(255,255,255,0.10)' }}
-          >
-            <span className="text-[10px] font-semibold tracking-widest" style={{ color: '#f5a623' }}>{weekday}</span>
-            <span className="text-2xl font-bold text-white leading-tight">{day}</span>
-            <span className="text-[11px] text-white/50 uppercase tracking-wide">{month}</span>
+        <div className="flex flex-col overflow-hidden rounded-[14px]">
+          {/* Main row: date column + card body */}
+          <div className="flex items-stretch">
+            {/* Date block */}
+            <div
+              className="flex flex-col items-center justify-center px-5 py-8 min-w-[80px] text-center flex-shrink-0"
+              style={{ background: 'rgba(245,166,35,0.12)', borderRight: '0.5px solid rgba(255,255,255,0.10)' }}
+            >
+              <span className="text-[10px] font-semibold tracking-widest" style={{ color: '#f5a623' }}>{weekday}</span>
+              <span className="text-3xl font-bold text-white leading-tight">{day}</span>
+              <span className="text-[11px] text-white/50 uppercase tracking-wide">{month}</span>
+            </div>
+
+            {/* Card body */}
+            <div className="flex-1 px-5 py-5">
+              {/* Row 1: Event name + status badge */}
+              <div className="flex items-start justify-between gap-2 mb-2">
+                <p className="text-[20px] font-bold text-white leading-tight">{event.title}</p>
+                {event.is_finalized ? (
+                  <span className="text-[13px] px-2.5 py-0.5 rounded-full flex-shrink-0"
+                    style={{ background: 'rgba(255,255,255,0.07)', border: '0.5px solid rgba(255,255,255,0.15)', color: 'rgba(255,255,255,0.45)' }}>
+                    Finalized
+                  </span>
+                ) : signupClosed ? (
+                  <span className="text-[13px] px-2.5 py-0.5 rounded-full flex-shrink-0"
+                    style={{ background: 'rgba(42,135,168,0.14)', border: '0.5px solid rgba(42,135,168,0.30)', color: '#6dd0e8' }}>
+                    Closed
+                  </span>
+                ) : isFull ? (
+                  <span className="text-[13px] px-2.5 py-0.5 rounded-full flex-shrink-0"
+                    style={{ background: 'rgba(239,83,80,0.14)', border: '0.5px solid rgba(239,83,80,0.32)', color: '#ef9a9a' }}>
+                    Full
+                  </span>
+                ) : (
+                  <span className="text-[13px] px-2.5 py-0.5 rounded-full flex-shrink-0"
+                    style={{ background: 'rgba(76,175,80,0.14)', border: '0.5px solid rgba(76,175,80,0.32)', color: '#6fcf97' }}>
+                    Open
+                  </span>
+                )}
+              </div>
+
+              {/* Row 2: Time + location */}
+              <div className="flex items-center gap-3 mb-2.5 flex-wrap">
+                <span className="text-[17px] font-bold" style={{ color: '#f5a623' }}>{time}</span>
+                <span className="text-[16px] text-white/55 flex items-center gap-1.5">
+                  <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a2 2 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                  </svg>
+                  {event.location}
+                  {event.organizer && <><span className="text-white/25 mx-1">·</span>{event.organizer}</>}
+                </span>
+              </div>
+
+              {/* Row 3: Gender badge + level badge */}
+              {(event.match_type || event.min_level != null || event.max_level != null) && (
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {event.match_type && (
+                    <span className="text-[13px] font-medium px-2.5 py-0.5 rounded-full"
+                      style={matchTypeCfg(event.match_type)}>
+                      {event.match_type}
+                    </span>
+                  )}
+                  {(event.min_level != null || event.max_level != null) && (() => {
+                    const lo = event.min_level ?? 0
+                    const hi = event.max_level ?? 7
+                    if (lo === 0 && hi === 7) {
+                      return (
+                        <span className="text-[13px] font-medium px-2.5 py-0.5 rounded-full"
+                          style={{ background: 'rgba(255,255,255,0.08)', border: '0.5px solid rgba(255,255,255,0.16)', color: 'rgba(255,255,255,0.55)' }}>
+                          All levels
+                        </span>
+                      )
+                    }
+                    const c = levelCfgByDisplay(lo)
+                    return (
+                      <span className="text-[13px] font-medium px-2.5 py-0.5 rounded-full"
+                        style={{ background: c.bg, border: `0.5px solid ${c.border}`, color: c.color }}>
+                        {lo.toFixed(1)} – {hi.toFixed(1)}
+                        {' · '}{levelPickerLabel(lo)}
+                      </span>
+                    )
+                  })()}
+                </div>
+              )}
+            </div>
           </div>
 
-          {/* Info */}
-          <div className="flex-1 px-4 py-4">
-            {/* Title + location/time/organizer on same line + badge */}
-            <div className="flex items-start justify-between gap-2 mb-3">
-              <div className="flex-1 min-w-0">
-                <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-                  <p className="text-base font-bold text-white leading-tight flex-shrink-0">{event.title}</p>
-                  <p className="text-sm text-white/55 flex items-center gap-1 flex-wrap">
-                    <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a2 2 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                    </svg>
-                    {event.location}
-                    <span className="text-white/25">·</span>
-                    {time}
-                    {event.organizer && <><span className="text-white/25">·</span>{event.organizer}</>}
-                  </p>
-                </div>
-              </div>
-              {event.is_finalized ? (
-                <span className="text-[11px] px-2 py-0.5 rounded-full flex-shrink-0"
-                  style={{ background: 'rgba(255,255,255,0.07)', border: '0.5px solid rgba(255,255,255,0.15)', color: 'rgba(255,255,255,0.45)' }}>
-                  Finalized
-                </span>
-              ) : signupClosed ? (
-                <span className="text-[11px] px-2 py-0.5 rounded-full flex-shrink-0"
-                  style={{ background: 'rgba(42,135,168,0.14)', border: '0.5px solid rgba(42,135,168,0.30)', color: '#6dd0e8' }}>
-                  Closed
-                </span>
-              ) : isFull ? (
-                <span className="text-[11px] px-2 py-0.5 rounded-full flex-shrink-0"
-                  style={{ background: 'rgba(239,83,80,0.14)', border: '0.5px solid rgba(239,83,80,0.32)', color: '#ef9a9a' }}>
-                  Full
-                </span>
-              ) : (
-                <span className="text-[11px] px-2 py-0.5 rounded-full flex-shrink-0"
-                  style={{ background: 'rgba(76,175,80,0.14)', border: '0.5px solid rgba(76,175,80,0.32)', color: '#6fcf97' }}>
-                  Open
-                </span>
-              )}
-            </div>
-
-            {/* Players + progress */}
-            <div className="flex items-center justify-between">
-              <div className="w-full max-w-[220px]">
-                <div className="flex justify-between text-xs text-white/45 mb-1.5">
-                  <span>
-                    {confirmed.length}/{maxPlayers}
-                    {waitlisted.length > 0 && (
-                      <span className="ml-1.5" style={{ color: '#f5a623' }}>
-                        · {waitlisted.length} waitlisted
-                      </span>
-                    )}
-                  </span>
-                  {!isFull && !event.is_finalized && waitlisted.length === 0 && (
-                    <span className="ml-2" style={{ color: 'rgba(255,255,255,0.32)' }}>{spotsLeft} left</span>
+          {/* Footer strip: progress bar left, signup status right */}
+          <div className="flex items-center gap-4 px-5 py-3"
+            style={{ borderTop: '0.5px solid rgba(255,255,255,0.08)' }}>
+            <div className="flex-1">
+              <div className="flex justify-between text-[13px] text-white/45 mb-1.5">
+                <span>
+                  {confirmed.length}/{maxPlayers}
+                  {waitlisted.length > 0 && (
+                    <span className="ml-1.5" style={{ color: '#f5a623' }}>
+                      · {waitlisted.length} waitlisted
+                    </span>
                   )}
-                </div>
-                <div className="w-full h-1 rounded-full" style={{ background: 'rgba(255,255,255,0.12)' }}>
-                  <div className="h-1 rounded-full transition-all"
-                    style={{ width: `${Math.min((confirmed.length / maxPlayers) * 100, 100)}%`, background: '#f5a623' }} />
-                </div>
-              </div>
-              {mySignup && (
-                <span className="text-xs font-medium ml-4"
-                  style={{ color: mySignup.status === 'confirmed' ? '#6fcf97' : '#f5a623' }}>
-                  {mySignup.status === 'confirmed' ? 'Signed up ✓' : 'Waitlisted'}
                 </span>
-              )}
+                {!isFull && !event.is_finalized && waitlisted.length === 0 && (
+                  <span style={{ color: 'rgba(255,255,255,0.32)' }}>{spotsLeft} left</span>
+                )}
+              </div>
+              <div className="w-full h-1.5 rounded-full" style={{ background: 'rgba(255,255,255,0.12)' }}>
+                <div className="h-1.5 rounded-full transition-all"
+                  style={{ width: `${Math.min((confirmed.length / maxPlayers) * 100, 100)}%`, background: '#f5a623' }} />
+              </div>
             </div>
+            {mySignup && (
+              <span className="text-[13px] font-medium flex-shrink-0"
+                style={{ color: mySignup.status === 'confirmed' ? '#6fcf97' : '#f5a623' }}>
+                {mySignup.status === 'confirmed' ? 'Signed up ✓' : 'Waitlisted'}
+              </span>
+            )}
           </div>
         </div>
       </Link>

@@ -1,0 +1,11 @@
+<svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background -->
+  <rect width="64" height="64" rx="12" fill="#061420"/>
+  <!-- Paddle head: gold fill with dark inner cutout = thick 8px visible border at any size -->
+  <rect x="6" y="1" width="38" height="48" rx="19" fill="#f5a623"/>
+  <rect x="14" y="9" width="22" height="32" rx="11" fill="#061420"/>
+  <!-- Handle: solid gold pill -->
+  <rect x="19" y="47" width="10" height="16" rx="5" fill="#f5a623"/>
+  <!-- Ball: solid gold -->
+  <circle cx="51" cy="9" r="9" fill="#f5a623"/>
+</svg>

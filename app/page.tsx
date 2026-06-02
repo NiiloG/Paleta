@@ -95,13 +95,14 @@ export default function LandingPagina() {
               </div>
             </div>
 
-            {/* Smaller "play under the Spanish sun" — same font-serif bold white + gold italic */}
+            {/* Smaller "earn your rank under the Spanish sun" — same font-serif bold white + gold italic */}
             <p className="font-serif font-bold text-white leading-snug mb-8" style={{ fontSize: 'clamp(16px, 2vw, 22px)' }}>
-              Play under the <em style={{ color: '#f5a623', fontStyle: 'italic' }}>Spanish</em> sun.
+              Track your game<br />
+              <span style={{ paddingLeft: '1.6em' }}>under the <em style={{ color: '#f5a623', fontStyle: 'italic' }}>Spanish</em> sun.</span>
             </p>
 
             <div className="flex flex-wrap gap-2.5">
-              {['Events', 'Match organizer', 'Rankings'].map(badge => (
+              {['Rankings', 'Events', 'Leaderboard'].map(badge => (
                 <span
                   key={badge}
                   className="px-4 py-2 rounded-full text-xs font-medium"
