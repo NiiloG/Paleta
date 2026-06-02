@@ -39,10 +39,27 @@ function focusOff(e: React.FocusEvent<HTMLInputElement | HTMLSelectElement>) {
   e.currentTarget.style.border = '0.5px solid rgba(255,255,255,0.18)'
 }
 
-function localDatetimeNow() {
+function localIsoDateNow(): string {
   const now = new Date()
-  now.setMinutes(now.getMinutes() - now.getTimezoneOffset())
-  return now.toISOString().slice(0, 16)
+  return [
+    now.getFullYear(),
+    String(now.getMonth() + 1).padStart(2, '0'),
+    String(now.getDate()).padStart(2, '0'),
+  ].join('-')
+}
+
+function localTimeNow(): string {
+  const now = new Date()
+  return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
+}
+
+// Build a timezone-aware ISO datetime so the DB stores the correct UTC equivalent.
+function buildDatetime(isoDate: string, hhmm: string): string {
+  const off  = -new Date().getTimezoneOffset()          // e.g. 120 for UTC+2
+  const sign = off >= 0 ? '+' : '-'
+  const h    = String(Math.floor(Math.abs(off) / 60)).padStart(2, '0')
+  const m    = String(Math.abs(off) % 60).padStart(2, '0')
+  return `${isoDate}T${hhmm}:00${sign}${h}:${m}`
 }
 
 function levelPickerLabel(val: number): string {
@@ -52,18 +69,54 @@ function levelPickerLabel(val: number): string {
   return 'Beginner'
 }
 
+// Calendar picker that displays DD-MM-YYYY regardless of browser locale.
+// The native date input (transparent text) provides the calendar UI;
+// an overlay span shows the formatted value.
+function DatePicker({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const display = value
+    ? `${value.slice(8, 10)}-${value.slice(5, 7)}-${value.slice(0, 4)}`
+    : ''
+  return (
+    <div style={{ position: 'relative' }}>
+      <span style={{
+        position: 'absolute', inset: 0,
+        display: 'flex', alignItems: 'center',
+        padding: '0 36px 0 14px',
+        fontSize: '14px',
+        color: value ? '#fff' : 'rgba(255,255,255,0.3)',
+        pointerEvents: 'none',
+        zIndex: 1,
+      }}>
+        {display || 'DD-MM-YYYY'}
+      </span>
+      <input
+        type="date"
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        style={{ ...inputStyle, color: 'transparent', colorScheme: 'dark' }}
+        onFocus={focusOn}
+        onBlur={focusOff}
+      />
+    </div>
+  )
+}
+
 export default function CreateEventPage() {
   const router = useRouter()
-  const [bezig, setBezig]       = useState(false)
-  const [fout, setFout]         = useState<string | null>(null)
-  const [minLevel, setMinLevel] = useState('')
-  const [maxLevel, setMaxLevel] = useState('')
+  const [bezig, setBezig]         = useState(false)
+  const [fout, setFout]           = useState<string | null>(null)
+  const [minLevel, setMinLevel]   = useState('')
+  const [maxLevel, setMaxLevel]   = useState('')
+  const [isoDate, setIsoDate]     = useState(localIsoDateNow)
+  const [startTime, setStartTime] = useState(localTimeNow)
+  const [endTime, setEndTime]     = useState('')
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
     setFout(null)
     setBezig(true)
     const formData = new FormData(e.currentTarget)
+    formData.set('datetime', buildDatetime(isoDate, startTime))
     const result = await createEvent(formData)
     if (result?.fout) {
       setFout(result.fout)
@@ -96,18 +149,25 @@ export default function CreateEventPage() {
               style={inputStyle} onFocus={focusOn} onBlur={focusOff} />
           </div>
 
-          {/* Start + End time */}
+          {/* Date left · Start + End time stacked right */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label style={labelStyle}>Start time</label>
-              <input name="datetime" type="datetime-local" required
-                defaultValue={localDatetimeNow()}
-                style={inputStyle} onFocus={focusOn} onBlur={focusOff} />
+              <label style={labelStyle}>Date</label>
+              <DatePicker value={isoDate} onChange={setIsoDate} />
             </div>
-            <div>
-              <label style={labelStyle}>End time <span style={optLabel}>(optional)</span></label>
-              <input name="end_time" type="time"
-                style={inputStyle} onFocus={focusOn} onBlur={focusOff} />
+            <div className="flex flex-col gap-3">
+              <div>
+                <label style={labelStyle}>Start time</label>
+                <input type="time" required value={startTime}
+                  onChange={e => setStartTime(e.target.value)}
+                  style={inputStyle} onFocus={focusOn} onBlur={focusOff} />
+              </div>
+              <div>
+                <label style={labelStyle}>End time <span style={optLabel}>(optional)</span></label>
+                <input name="end_time" type="time" value={endTime}
+                  onChange={e => setEndTime(e.target.value)}
+                  style={inputStyle} onFocus={focusOn} onBlur={focusOff} />
+              </div>
             </div>
           </div>
 
@@ -115,13 +175,6 @@ export default function CreateEventPage() {
           <div>
             <label style={labelStyle}>Location</label>
             <input name="location" type="text" required placeholder="Club Javea"
-              style={inputStyle} onFocus={focusOn} onBlur={focusOff} />
-          </div>
-
-          {/* Organizer */}
-          <div>
-            <label style={labelStyle}>Organizer <span style={optLabel}>(optional)</span></label>
-            <input name="organizer" type="text" placeholder="e.g. Club Javea · Niels"
               style={inputStyle} onFocus={focusOn} onBlur={focusOff} />
           </div>
 
@@ -182,7 +235,7 @@ export default function CreateEventPage() {
               </div>
             </div>
             <p className="text-xs text-white/35 mt-1.5">
-              Beginner 1.0–2.5 · Intermediate 2.5–4.0 · Advanced 4.0–5.5 · Expert 5.5–7.0
+              Beginner 0–1.99 · Intermediate 2–3.99 · Advanced 4–5.99 · Expert 6–7
             </p>
           </div>
 

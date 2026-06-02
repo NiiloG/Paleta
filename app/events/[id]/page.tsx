@@ -6,13 +6,16 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { signUpForEvent, cancelEventSignup } from '@/app/actions/events'
 import type { Event, EventSignup, EventMatch, Profiel } from '@/types'
-import { eloColor, eloToPlaytomic } from '@/lib/tier'
+import { eloColor, eloToPlaytomic, tierCfg } from '@/lib/tier'
+
+type OrganizerProfile = { id: string; naam: string; email: string; phone: string | null }
 
 type FullEvent = Event & {
   event_signups: (EventSignup & { profielen: Profiel | null })[]
   event_matches: (EventMatch & {
     a1p: Profiel | null; a2p: Profiel | null; b1p: Profiel | null; b2p: Profiel | null
   })[]
+  organizer_profile: OrganizerProfile | null
 }
 
 const cardStyle: React.CSSProperties = {
@@ -61,8 +64,9 @@ export default function EventDetailPage() {
   const [event, setEvent]     = useState<FullEvent | null>(null)
   const [me, setMe]           = useState<Profiel | null>(null)
   const [loading, setLoading] = useState(true)
-  const [bezig, setBezig]     = useState(false)
-  const [bericht, setBericht] = useState<{ type: 'ok' | 'err'; tekst: string } | null>(null)
+  const [bezig, setBezig]           = useState(false)
+  const [bericht, setBericht]       = useState<{ type: 'ok' | 'err'; tekst: string } | null>(null)
+  const [showCancelWarn, setShowCancelWarn] = useState(false)
 
   async function load() {
     const supabase = createClient()
@@ -72,7 +76,7 @@ export default function EventDetailPage() {
       setMe(data)
     }
 
-    const { data } = await supabase
+    const { data: eventData } = await supabase
       .from('events')
       .select(`
         *,
@@ -88,7 +92,23 @@ export default function EventDetailPage() {
       .eq('id', params.id)
       .single()
 
-    setEvent(data as unknown as FullEvent)
+    let organizer_profile: OrganizerProfile | null = null
+    if (eventData) {
+      if (eventData.created_by) {
+        const { data: op } = await supabase
+          .from('profielen').select('id, naam, email, phone')
+          .eq('id', eventData.created_by).maybeSingle()
+        organizer_profile = op ?? null
+      }
+      if (!organizer_profile) {
+        const { data: admins } = await supabase
+          .from('profielen').select('id, naam, email, phone')
+          .eq('is_admin', true).limit(1)
+        organizer_profile = admins?.[0] ?? null
+      }
+    }
+
+    setEvent(eventData ? { ...eventData, organizer_profile } as unknown as FullEvent : null)
     setLoading(false)
   }
 
@@ -117,6 +137,7 @@ export default function EventDetailPage() {
     if (!me) return
     setBezig(true)
     setBericht(null)
+    setShowCancelWarn(false)
     const result = await cancelEventSignup(params.id)
     if (result?.fout) {
       setBericht({ type: 'err', tekst: result.fout })
@@ -125,6 +146,12 @@ export default function EventDetailPage() {
       await load()
     }
     setBezig(false)
+  }
+
+  function requestCancel() {
+    if (!event) return
+    const closed = Date.now() >= new Date(event.datetime).getTime() - 2 * 60 * 60 * 1000
+    if (closed) { setShowCancelWarn(true) } else { handleCancel() }
   }
 
   if (loading) return <div style={{ minHeight: 'calc(100vh - 4rem)' }} />
@@ -161,26 +188,38 @@ export default function EventDetailPage() {
   })
   const roundNumbers = Object.keys(rounds).map(Number).sort((a, b) => a - b)
 
-  // Final standings
-  const standings: Record<string, { naam: string; playerNumber: number | null; points: number; wins: number; games: number; eloAtSignup: number }> = {}
-  if (event.is_finalized) {
-    confirmed.forEach(s => {
-      const p = s.profielen
-      if (!p) return
-      standings[s.player_id] = { naam: p.naam, playerNumber: p.player_number ?? null, points: 0, wins: 0, games: 0, eloAtSignup: s.elo_at_signup }
+  // W/L per player from scored matches
+  const wlMap: Record<string, { w: number; l: number }> = {}
+  event.event_matches.forEach(m => {
+    if (m.team_a_score === null || m.team_b_score === null) return
+    const aWon = m.team_a_score > m.team_b_score
+    ;[m.player_a1, m.player_a2].forEach(id => {
+      if (!id) return
+      if (!wlMap[id]) wlMap[id] = { w: 0, l: 0 }
+      if (aWon) wlMap[id].w++; else wlMap[id].l++
     })
-    event.event_matches.forEach(m => {
-      if (m.team_a_score === null || m.team_b_score === null) return
-      const sa = m.team_a_score, sb = m.team_b_score
-      ;[m.player_a1, m.player_a2].forEach(id => {
-        if (id && standings[id]) { standings[id].points += sa; standings[id].games++; if (sa > sb) standings[id].wins++ }
-      })
-      ;[m.player_b1, m.player_b2].forEach(id => {
-        if (id && standings[id]) { standings[id].points += sb; standings[id].games++; if (sb > sa) standings[id].wins++ }
-      })
+    ;[m.player_b1, m.player_b2].forEach(id => {
+      if (!id) return
+      if (!wlMap[id]) wlMap[id] = { w: 0, l: 0 }
+      if (!aWon) wlMap[id].w++; else wlMap[id].l++
     })
-  }
-  const sortedStandings = Object.entries(standings).sort((a, b) => b[1].points - a[1].points)
+  })
+
+  // Rating ranking for finalized events — sorted by ELO impact desc
+  const ratingRanking = event.is_finalized
+    ? [...confirmed].sort((a, b) => {
+        const da = a.elo_after != null ? a.elo_after - a.elo_at_signup : null
+        const db = b.elo_after != null ? b.elo_after - b.elo_at_signup : null
+        if (da != null && db != null) return db - da
+        if (da != null) return -1
+        if (db != null) return 1
+        const wpa = (wlMap[a.player_id]?.w ?? 0) / Math.max(1, (wlMap[a.player_id]?.w ?? 0) + (wlMap[a.player_id]?.l ?? 0))
+        const wpb = (wlMap[b.player_id]?.w ?? 0) / Math.max(1, (wlMap[b.player_id]?.w ?? 0) + (wlMap[b.player_id]?.l ?? 0))
+        return wpb - wpa
+      })
+    : []
+
+  const RANK_COLOR = ['#f5a623', 'rgba(255,255,255,0.70)', 'rgba(205,127,50,0.85)']
 
   const hasLevelReq    = event.min_level != null || event.max_level != null
   const levelBadgeCfg = hasLevelReq ? levelCfgByDisplay(event.min_level ?? event.max_level ?? 0) : null
@@ -199,10 +238,14 @@ export default function EventDetailPage() {
           {d.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
           {' · '}{d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
           {event.end_time && ` – ${event.end_time.slice(0, 5)}`}
-          {' · '}{event.location}
-          {' · '}{event.court_count} court{event.court_count !== 1 ? 's' : ''}
-          {event.court_numbers && event.court_numbers.length > 0 && ` (${event.court_numbers.map(n => `#${n}`).join(', ')})`}
-          {event.organizer && <>{' · '}Organized by {event.organizer}</>}
+        </p>
+        <p className="text-xl font-semibold mt-1" style={{ color: '#f5a623' }}>
+          {event.location}
+          <span className="mx-2" style={{ color: 'rgba(245,166,35,0.35)' }}>·</span>
+          {event.court_count} court{event.court_count !== 1 ? 's' : ''}
+          {event.court_numbers && event.court_numbers.length > 0 && (
+            <span style={{ color: 'rgba(245,166,35,0.50)' }}> ({event.court_numbers.map(n => `#${n}`).join(', ')})</span>
+          )}
         </p>
 
         {/* Badges */}
@@ -230,9 +273,148 @@ export default function EventDetailPage() {
             )}
           </div>
         )}
+
+        {/* Organizer */}
+        {event.organizer_profile && (
+          <div className="flex items-center gap-3 mt-3">
+            <span className="text-xs text-white/40">Organized by</span>
+            <span className="text-xs font-semibold" style={{ color: '#f5a623' }}>{event.organizer_profile.naam}</span>
+            <a href={`mailto:${event.organizer_profile.email}`}
+              className="flex items-center gap-1 transition-opacity hover:opacity-80"
+              style={{ color: '#f5a623' }} title={event.organizer_profile.email}>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="2" y="4" width="20" height="16" rx="2"/>
+                <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/>
+              </svg>
+              <span className="text-xs hidden sm:inline">{event.organizer_profile.email}</span>
+            </a>
+            {event.organizer_profile.phone && (
+              <a href={`tel:${event.organizer_profile.phone}`}
+                className="flex items-center gap-1 transition-opacity hover:opacity-80"
+                style={{ color: '#f5a623' }} title={event.organizer_profile.phone}>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12 19.79 19.79 0 0 1 1.61 3.32a2 2 0 0 1 1.99-2.18h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L7.91 9a16 16 0 0 0 6 6l.92-.92a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/>
+                </svg>
+                <span className="text-xs hidden sm:inline">{event.organizer_profile.phone}</span>
+              </a>
+            )}
+          </div>
+        )}
       </div>
 
+      {/* Late-cancel warning modal */}
+      {showCancelWarn && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
+          {/* backdrop — kept separate so hc CSS doesn't bleed into modal text */}
+          <div className="absolute inset-0" aria-hidden="true"
+            style={{ background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(4px)' }} />
+          <div className="relative w-full max-w-md rounded-2xl p-6"
+            style={{ background: '#0a1828', border: '1px solid rgba(239,68,68,0.45)' }}>
+            <div className="flex items-center gap-2 mb-4">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#f87171" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+              </svg>
+              <p className="text-sm font-bold uppercase tracking-widest" style={{ color: '#f87171' }}>Warning — sign-up is closed</p>
+            </div>
+            <p className="text-white font-semibold text-base mb-3">You are about to cancel after the deadline.</p>
+            <p className="text-sm leading-relaxed mb-4" style={{ color: 'rgba(255,255,255,0.65)' }}>
+              Sign-up closed 2 hours before the event. If you cancel now, <strong className="text-white">3 other players will lose their court</strong> and may still be charged for it — since there won't be enough players to fill the court they were assigned to.
+            </p>
+            <div className="rounded-xl p-4 mb-5" style={{ background: 'rgba(239,68,68,0.10)', border: '0.5px solid rgba(239,68,68,0.30)' }}>
+              <p className="text-xs font-semibold uppercase tracking-wider mb-1" style={{ color: '#f87171' }}>This action will</p>
+              <ul className="text-sm space-y-1" style={{ color: 'rgba(255,255,255,0.70)' }}>
+                <li>· Remove you from the event immediately</li>
+                <li>· Move up to 3 confirmed players back to the waitlist</li>
+                <li>· Notify the event organiser of your late cancellation</li>
+              </ul>
+            </div>
+            <div className="flex gap-3">
+              <button onClick={() => setShowCancelWarn(false)}
+                className="flex-1 py-2.5 rounded-xl text-sm font-semibold transition-all hover:opacity-80"
+                style={{ background: 'rgba(255,255,255,0.08)', border: '0.5px solid rgba(255,255,255,0.18)', color: 'rgba(255,255,255,0.70)' }}>
+                Go back
+              </button>
+              <button onClick={handleCancel} disabled={bezig}
+                className="flex-1 py-2.5 rounded-xl text-sm font-semibold transition-all"
+                style={{ background: bezig ? 'rgba(239,68,68,0.4)' : 'rgba(239,68,68,0.85)', color: '#fff', cursor: bezig ? 'not-allowed' : 'pointer' }}>
+                {bezig ? 'Cancelling…' : 'Yes, cancel anyway'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="space-y-5">
+
+        {/* Rating ranking — finalized events only */}
+        {event.is_finalized && ratingRanking.length > 0 && (
+          <div style={cardStyle} className="p-5">
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-white/30 mb-4">Rating ranking</p>
+            <div className="rounded-xl overflow-hidden" style={{ border: '0.5px solid rgba(255,255,255,0.10)' }}>
+              <table className="w-full text-sm border-collapse">
+                <thead>
+                  <tr style={{ background: 'rgba(255,255,255,0.05)', borderBottom: '0.5px solid rgba(255,255,255,0.10)' }}>
+                    <th className="text-left px-4 py-2.5 text-[10px] font-semibold uppercase tracking-widest text-white/35 w-12">Rank</th>
+                    <th className="text-left px-4 py-2.5 text-[10px] font-semibold uppercase tracking-widest text-white/35">Player</th>
+                    <th className="text-right px-4 py-2.5 text-[10px] font-semibold uppercase tracking-widest text-white/35 hidden sm:table-cell">Rating</th>
+                    <th className="text-right px-4 py-2.5 text-[10px] font-semibold uppercase tracking-widest text-white/35">Impact</th>
+                    <th className="text-right px-4 py-2.5 text-[10px] font-semibold uppercase tracking-widest text-white/35 hidden sm:table-cell">W / L</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {ratingRanking.map((s, i) => {
+                    const tier = tierCfg(s.elo_at_signup)
+                    const impact = s.elo_after != null
+                      ? (parseFloat(eloToPlaytomic(s.elo_after)) - parseFloat(eloToPlaytomic(s.elo_at_signup))).toFixed(2)
+                      : null
+                    const pos = impact != null ? parseFloat(impact) >= 0 : null
+                    return (
+                      <tr key={s.id} className="hover:bg-white/[0.03] transition-colors"
+                        style={{ borderBottom: '0.5px solid rgba(255,255,255,0.07)' }}>
+                        <td className="px-4 py-3">
+                          <span className="text-sm font-bold tabular-nums"
+                            style={{ color: i < 3 ? RANK_COLOR[i] : 'rgba(255,255,255,0.25)' }}>
+                            {i + 1}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <p className="text-white/85 font-medium text-sm">{s.profielen?.naam ?? '—'}</p>
+                          <span className="text-[10px] px-1.5 py-0.5 rounded-full"
+                            style={{ background: tier.bg, border: `0.5px solid ${tier.border}`, color: tier.color }}>
+                            {tier.label}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-right hidden sm:table-cell">
+                          <span className="font-bold font-mono tabular-nums text-sm" style={{ color: tier.color }}>
+                            {eloToPlaytomic(s.elo_at_signup)}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          {impact != null ? (
+                            <span className="font-bold font-mono tabular-nums text-sm"
+                              style={{ color: pos ? '#6fcf97' : '#ef9a9a' }}>
+                              {pos ? '+' : ''}{impact}
+                            </span>
+                          ) : (
+                            <span className="text-white/25 text-xs">—</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-right hidden sm:table-cell">
+                          <span className="font-mono tabular-nums text-sm">
+                            <span style={{ color: '#6fcf97' }}>{wlMap[s.player_id]?.w ?? 0}</span>
+                            <span className="text-white/25 mx-1">/</span>
+                            <span style={{ color: '#ef9a9a' }}>{wlMap[s.player_id]?.l ?? 0}</span>
+                          </span>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
 
         {/* Signup card */}
         {!event.is_finalized && (
@@ -289,7 +471,7 @@ export default function EventDetailPage() {
               </p>
             ) : me ? (
               mySignup ? (
-                <button onClick={handleCancel} disabled={bezig}
+                <button onClick={requestCancel} disabled={bezig}
                   className="w-full py-2 rounded-xl text-sm font-semibold transition-all"
                   style={{ background: 'rgba(255,255,255,0.07)', border: '0.5px solid rgba(255,255,255,0.18)', color: 'rgba(255,255,255,0.55)', cursor: bezig ? 'not-allowed' : 'pointer' }}>
                   {bezig ? '…' : 'Cancel sign-up'}
@@ -405,27 +587,6 @@ export default function EventDetailPage() {
                       </div>
                     ))}
                   </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Final standings */}
-        {event.is_finalized && sortedStandings.length > 0 && (
-          <div style={cardStyle} className="p-5">
-            <p className="text-[10px] font-semibold uppercase tracking-widest text-white/30 mb-4">Final standings</p>
-            <div className="space-y-0">
-              {sortedStandings.map(([id, s], i) => (
-                <div key={id} className="flex items-center py-2.5"
-                  style={{ borderBottom: '0.5px solid rgba(255,255,255,0.08)' }}>
-                  <span className="w-7 text-center text-sm font-bold"
-                    style={{ color: i < 3 ? '#f5a623' : 'rgba(255,255,255,0.25)' }}>
-                    {i + 1}
-                  </span>
-                  <span className="flex-1 text-sm text-white/85">{s.naam}</span>
-                  <span className="text-xs text-white/35 mr-4">{s.wins}W · {s.games - s.wins}L</span>
-                  <span className="text-base font-bold font-mono" style={{ color: '#f5a623' }}>{s.points} pts</span>
                 </div>
               ))}
             </div>

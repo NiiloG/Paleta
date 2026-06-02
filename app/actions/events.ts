@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { createClient, createServiceClient } from '@/lib/supabase/server'
 import { generateRoundDraw, calculateEloDeltas } from '@/lib/americano'
-import { sendWaitlistPromotionEmail, sendDemotedToWaitlistEmail } from '@/lib/email'
+import { sendWaitlistPromotionEmail, sendDemotedToWaitlistEmail, sendLateCancellationEmail } from '@/lib/email'
 
 const ROUNDS_PER_EVENT = 3
 const SIGNUP_CUTOFF_MS = 2 * 60 * 60 * 1000 // 2 hours
@@ -291,7 +291,7 @@ export async function cancelEventSignup(eventId: string) {
 
   // Recalculate all statuses: confirmed = floor(remaining/4)*4 players in signup order
   const { data: event } = await service
-    .from('events').select('court_count, title, datetime, location').eq('id', eventId).single()
+    .from('events').select('court_count, title, datetime, location, created_by').eq('id', eventId).single()
 
   const { data: remaining } = await service
     .from('event_signups').select('id, player_id')
@@ -347,6 +347,22 @@ export async function cancelEventSignup(eventId: string) {
           to: p.email, name: p.naam,
           eventTitle: event.title, eventDatetime: event.datetime, eventLocation: event.location,
         }))
+    )
+  }
+
+  // If sign-up was already closed, notify all admins of the late cancellation
+  const isLate = event && Date.now() >= new Date(event.datetime).getTime() - SIGNUP_CUTOFF_MS
+  if (isLate && event) {
+    const { data: canceller } = await service.from('profielen').select('naam').eq('id', user.id).single()
+    const { data: admins } = await service.from('profielen').select('naam, email').eq('is_admin', true)
+    await Promise.all(
+      (admins ?? []).map(a =>
+        sendLateCancellationEmail({
+          to: a.email, adminName: a.naam,
+          cancellerName: canceller?.naam ?? 'A player',
+          eventTitle: event.title, eventDatetime: event.datetime, eventLocation: event.location,
+        })
+      )
     )
   }
 
@@ -630,6 +646,12 @@ export async function finalizeEvent(eventId: string) {
       verloren:             p.verloren + stats.losses,
     }).eq('id', p.id)
     if (error) updateErrors.push(error.message)
+
+    // Snapshot post-event ELO on the signup row for historical ranking
+    await service.from('event_signups')
+      .update({ elo_after: newElo })
+      .eq('event_id', eventId)
+      .eq('player_id', p.id)
   }
   if (updateErrors.length > 0) return { fout: `ELO update failed: ${updateErrors.join('; ')}` }
 
@@ -781,6 +803,29 @@ export async function updateMatchCourt(matchId: string, courtNumber: number) {
 
   revalidatePath(`/events/${match.event_id}`)
   revalidatePath(`/events/${match.event_id}/admin`)
+  return {}
+}
+
+export async function updateAllMatchesCourt(eventId: string, oldCourtNumber: number, newCourtNumber: number) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { fout: 'Not authenticated' }
+
+  const { data: profiel } = await supabase.from('profielen').select('is_admin').eq('id', user.id).single()
+  if (!profiel?.is_admin) return { fout: 'Admin only' }
+
+  if (!Number.isInteger(newCourtNumber) || newCourtNumber < 1) return { fout: 'Invalid court number' }
+
+  const service = await createServiceClient()
+  const { error } = await service
+    .from('event_matches')
+    .update({ court_number: newCourtNumber })
+    .eq('event_id', eventId)
+    .eq('court_number', oldCourtNumber)
+  if (error) return { fout: error.message }
+
+  revalidatePath(`/events/${eventId}`)
+  revalidatePath(`/events/${eventId}/admin`)
   return {}
 }
 

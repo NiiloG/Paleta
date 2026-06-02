@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import type { Event } from '@/types'
 import EventBeheerKnop from './EventBeheerKnop'
+import MatchesToggle from './MatchesToggle'
 import Link from 'next/link'
 
 export const revalidate = 0
@@ -23,6 +24,10 @@ export default async function BeheerPagina() {
     .limit(30)
   const events = (alleEvents ?? []) as unknown as EventRow[]
 
+  const { data: settings } = await supabase
+    .from('instellingen').select('matches_enabled').eq('id', 1).single()
+  const matchesEnabled = settings?.matches_enabled ?? true
+
   const thStyle: React.CSSProperties = {
     background: 'rgba(255,255,255,0.07)',
     borderBottom: '0.5px solid rgba(255,255,255,0.15)',
@@ -40,6 +45,13 @@ export default async function BeheerPagina() {
           style={{ background: 'rgba(245,166,35,0.15)', border: '0.5px solid rgba(245,166,35,0.35)', color: '#f5a623' }}>
           + New event
         </Link>
+      </div>
+
+      {/* Matches settings */}
+      <div className="mb-10 p-5 rounded-2xl"
+        style={{ background: 'rgba(255,255,255,0.04)', border: '0.5px solid rgba(255,255,255,0.10)' }}>
+        <p className="text-[10px] font-semibold uppercase tracking-widest text-white/30 mb-4">Matches</p>
+        <MatchesToggle initialEnabled={matchesEnabled} />
       </div>
 
       <h2 className="text-[10px] font-semibold uppercase tracking-widest text-white/30 mb-4">All events</h2>

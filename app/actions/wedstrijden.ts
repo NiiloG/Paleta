@@ -3,14 +3,13 @@
 import { revalidatePath } from 'next/cache'
 import { createClient, createServiceClient } from '@/lib/supabase/server'
 import { maakGebalanceerdeTeams } from '@/lib/matchmaking'
-import { berekenTeamEloNaWedstrijd } from '@/lib/elo'
 import type { Profiel } from '@/types'
 
 export async function aanmeldenVoorWedstrijd(wedstrijdId: string) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
 
-  if (!user) return { fout: 'Je moet ingelogd zijn om je aan te melden.' }
+  if (!user) return { fout: 'You must be signed in to join.' }
 
   const { data: wedstrijd } = await supabase
     .from('wedstrijden')
@@ -18,8 +17,8 @@ export async function aanmeldenVoorWedstrijd(wedstrijdId: string) {
     .eq('id', wedstrijdId)
     .single()
 
-  if (!wedstrijd) return { fout: 'Wedstrijd niet gevonden.' }
-  if (wedstrijd.status !== 'open') return { fout: 'Aanmelden is niet meer mogelijk voor deze wedstrijd.' }
+  if (!wedstrijd) return { fout: 'Match not found.' }
+  if (wedstrijd.status !== 'open') return { fout: 'Sign-ups are closed for this match.' }
 
   const { count } = await supabase
     .from('aanmeldingen')
@@ -27,7 +26,7 @@ export async function aanmeldenVoorWedstrijd(wedstrijdId: string) {
     .eq('wedstrijd_id', wedstrijdId)
 
   if ((count ?? 0) >= wedstrijd.max_spelers) {
-    return { fout: 'Deze wedstrijd is al vol.' }
+    return { fout: 'This match is already full.' }
   }
 
   const { error } = await supabase
@@ -35,8 +34,8 @@ export async function aanmeldenVoorWedstrijd(wedstrijdId: string) {
     .insert({ wedstrijd_id: wedstrijdId, speler_id: user.id })
 
   if (error) {
-    if (error.code === '23505') return { fout: 'Je bent al aangemeld voor deze wedstrijd.' }
-    return { fout: 'Aanmelden mislukt. Probeer het opnieuw.' }
+    if (error.code === '23505') return { fout: 'You are already signed up for this match.' }
+    return { fout: 'Sign-up failed. Please try again.' }
   }
 
   const nieuweCount = (count ?? 0) + 1
@@ -44,7 +43,7 @@ export async function aanmeldenVoorWedstrijd(wedstrijdId: string) {
     await maakTeamsAan(wedstrijdId)
   }
 
-  revalidatePath('/')
+  revalidatePath('/wedstrijden')
   return { succes: true }
 }
 
@@ -52,7 +51,7 @@ export async function afmeldenVanWedstrijd(wedstrijdId: string) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
 
-  if (!user) return { fout: 'Je moet ingelogd zijn.' }
+  if (!user) return { fout: 'Not signed in.' }
 
   const { data: wedstrijd } = await supabase
     .from('wedstrijden')
@@ -61,7 +60,7 @@ export async function afmeldenVanWedstrijd(wedstrijdId: string) {
     .single()
 
   if (wedstrijd?.status !== 'open') {
-    return { fout: 'Je kunt je niet meer afmelden voor deze wedstrijd.' }
+    return { fout: 'You can no longer cancel your sign-up for this match.' }
   }
 
   await supabase
@@ -70,14 +69,14 @@ export async function afmeldenVanWedstrijd(wedstrijdId: string) {
     .eq('wedstrijd_id', wedstrijdId)
     .eq('speler_id', user.id)
 
-  revalidatePath('/')
+  revalidatePath('/wedstrijden')
   return { succes: true }
 }
 
 async function maakTeamsAan(wedstrijdId: string) {
-  const supabase = await createServiceClient()
+  const service = await createServiceClient()
 
-  const { data: aanmeldingen } = await supabase
+  const { data: aanmeldingen } = await service
     .from('aanmeldingen')
     .select('speler_id, profielen(id, naam, email, elo_rating, wedstrijden_gespeeld, gewonnen, verloren, is_admin, aangemaakt_op)')
     .eq('wedstrijd_id', wedstrijdId)
@@ -90,178 +89,137 @@ async function maakTeamsAan(wedstrijdId: string) {
   const { team1, team2 } = maakGebalanceerdeTeams(spelers)
 
   for (const speler of team1) {
-    await supabase
-      .from('aanmeldingen')
-      .update({ team: 1 })
-      .eq('wedstrijd_id', wedstrijdId)
-      .eq('speler_id', speler.id)
+    await service.from('aanmeldingen').update({ team: 1 })
+      .eq('wedstrijd_id', wedstrijdId).eq('speler_id', speler.id)
   }
-
   for (const speler of team2) {
-    await supabase
-      .from('aanmeldingen')
-      .update({ team: 2 })
-      .eq('wedstrijd_id', wedstrijdId)
-      .eq('speler_id', speler.id)
+    await service.from('aanmeldingen').update({ team: 2 })
+      .eq('wedstrijd_id', wedstrijdId).eq('speler_id', speler.id)
   }
 
-  await supabase
-    .from('wedstrijden')
-    .update({ status: 'vol' })
-    .eq('id', wedstrijdId)
+  await service.from('wedstrijden').update({ status: 'vol' }).eq('id', wedstrijdId)
 }
 
+// Any logged-in user can create a match.
+// gepland_op should be a timezone-aware ISO string built on the client.
 export async function maakWedstrijd(formData: FormData) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { fout: 'Not signed in.' }
 
-  if (!user) return { fout: 'Niet ingelogd.' }
+  const geplandOp   = formData.get('gepland_op') as string
+  const locatie     = (formData.get('locatie')    as string | null)?.trim() || 'Javea'
+  const matchTypeRaw = (formData.get('match_type') as string | null)?.trim() || null
+  const minLevelRaw  = (formData.get('min_level')  as string | null)?.trim()
+  const maxLevelRaw  = (formData.get('max_level')  as string | null)?.trim()
+  const minLevel    = minLevelRaw ? parseFloat(minLevelRaw) : null
+  const maxLevel    = maxLevelRaw ? parseFloat(maxLevelRaw) : null
 
-  const { data: profiel } = await supabase
-    .from('profielen')
-    .select('is_admin')
-    .eq('id', user.id)
-    .single()
+  if (!geplandOp) return { fout: 'Date and time are required.' }
 
-  if (!profiel?.is_admin) return { fout: 'Geen beheerdersrechten.' }
+  const service = await createServiceClient()
 
-  const datum = formData.get('datum') as string
-  const tijd = formData.get('tijd') as string
-  const locatie = formData.get('locatie') as string
+  // Try the full insert including optional fields (requires migration to have been run).
+  // If it fails for any reason — most likely missing columns — fall back to a base
+  // insert so the match is always created.
+  const fullData: Record<string, unknown> = {
+    gepland_op:      geplandOp,
+    locatie,
+    aangemaakt_door: user.id,
+  }
+  if (matchTypeRaw && matchTypeRaw !== 'Mixed') fullData.match_type = matchTypeRaw
+  if (minLevel !== null && !isNaN(minLevel))    fullData.min_level  = minLevel
+  if (maxLevel !== null && !isNaN(maxLevel))    fullData.max_level  = maxLevel
 
-  if (!datum || !tijd) return { fout: 'Datum en tijd zijn verplicht.' }
+  let { error } = await service.from('wedstrijden').insert(fullData)
 
-  const geplandOp = new Date(`${datum}T${tijd}:00`).toISOString()
+  if (error && Object.keys(fullData).length > 3) {
+    // Optional columns are not in the DB yet — retry with just the base fields.
+    const baseData = { gepland_op: geplandOp, locatie, aangemaakt_door: user.id }
+    ;({ error } = await service.from('wedstrijden').insert(baseData))
+  }
 
-  const { error } = await supabase
-    .from('wedstrijden')
-    .insert({
-      gepland_op: geplandOp,
-      locatie: locatie || 'Javea',
-      aangemaakt_door: user.id,
-    })
+  if (error) return { fout: 'Could not create match. Please try again.' }
 
-  if (error) return { fout: 'Aanmaken mislukt. Probeer het opnieuw.' }
-
-  revalidatePath('/')
-  revalidatePath('/admin')
+  revalidatePath('/wedstrijden')
   return { succes: true }
 }
 
-export async function legResultaatVast(formData: FormData) {
+// Match creator (or admin) can confirm/unconfirm the court booking.
+export async function bevestigBaanBoeking(wedstrijdId: string, confirmed: boolean) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { fout: 'Not signed in.' }
 
-  if (!user) return { fout: 'Niet ingelogd.' }
+  const service = await createServiceClient()
+  const { data: wedstrijd } = await service
+    .from('wedstrijden').select('aangemaakt_door').eq('id', wedstrijdId).single()
+  if (!wedstrijd) return { fout: 'Match not found.' }
 
   const { data: profiel } = await supabase
-    .from('profielen')
-    .select('is_admin')
-    .eq('id', user.id)
-    .single()
+    .from('profielen').select('is_admin').eq('id', user.id).single()
 
-  if (!profiel?.is_admin) return { fout: 'Geen beheerdersrechten.' }
-
-  const wedstrijdId = formData.get('wedstrijd_id') as string
-  const team1Score = parseInt(formData.get('team1_score') as string)
-  const team2Score = parseInt(formData.get('team2_score') as string)
-
-  if (isNaN(team1Score) || isNaN(team2Score) || team1Score < 0 || team2Score < 0) {
-    return { fout: 'Ongeldige scores.' }
-  }
-  if (team1Score === team2Score) {
-    return { fout: 'Een gelijkspel is niet mogelijk in padel.' }
+  if (wedstrijd.aangemaakt_door !== user.id && !profiel?.is_admin) {
+    return { fout: 'Only the match creator can update the court booking.' }
   }
 
-  const { data: aanmeldingen } = await supabase
-    .from('aanmeldingen')
-    .select('speler_id, team, profielen(id, elo_rating, wedstrijden_gespeeld, gewonnen, verloren)')
-    .eq('wedstrijd_id', wedstrijdId)
-    .in('team', [1, 2])
-
-  if (!aanmeldingen || aanmeldingen.length !== 4) {
-    return { fout: 'Wedstrijd heeft niet de juiste teamindeling.' }
-  }
-
-  const serviceSupabase = await createServiceClient()
-
-  await serviceSupabase
-    .from('resultaten')
-    .insert({
-      wedstrijd_id: wedstrijdId,
-      team1_score: team1Score,
-      team2_score: team2Score,
-      vastgelegd_door: user.id,
-    })
-
-  await serviceSupabase
+  const { error } = await service
     .from('wedstrijden')
-    .update({ status: 'voltooid' })
+    .update({ court_booking_confirmed: confirmed })
     .eq('id', wedstrijdId)
 
-  const team1Spelers = aanmeldingen.filter(a => a.team === 1).map(a => a.profielen as unknown as Profiel & { elo_rating: number })
-  const team2Spelers = aanmeldingen.filter(a => a.team === 2).map(a => a.profielen as unknown as Profiel & { elo_rating: number })
-
-  const team1Gewonnen = team1Score > team2Score
-  const nieuweElo = berekenTeamEloNaWedstrijd(
-    [team1Spelers[0].elo_rating, team1Spelers[1].elo_rating],
-    [team2Spelers[0].elo_rating, team2Spelers[1].elo_rating],
-    team1Gewonnen
-  )
-
-  for (let i = 0; i < 2; i++) {
-    const speler = team1Spelers[i]
-    await serviceSupabase
-      .from('profielen')
-      .update({
-        elo_rating: nieuweElo.team1[i],
-        wedstrijden_gespeeld: speler.wedstrijden_gespeeld + 1,
-        gewonnen: speler.gewonnen + (team1Gewonnen ? 1 : 0),
-        verloren: speler.verloren + (team1Gewonnen ? 0 : 1),
-      })
-      .eq('id', speler.id)
+  if (error) {
+    if (error.message?.includes('court_booking_confirmed')) {
+      return { fout: 'Court booking requires a database update — run migration_matches.sql in Supabase first.' }
+    }
+    return { fout: 'Could not update court booking status.' }
   }
 
-  for (let i = 0; i < 2; i++) {
-    const speler = team2Spelers[i]
-    await serviceSupabase
-      .from('profielen')
-      .update({
-        elo_rating: nieuweElo.team2[i],
-        wedstrijden_gespeeld: speler.wedstrijden_gespeeld + 1,
-        gewonnen: speler.gewonnen + (team1Gewonnen ? 0 : 1),
-        verloren: speler.verloren + (team1Gewonnen ? 1 : 0),
-      })
-      .eq('id', speler.id)
-  }
+  revalidatePath('/wedstrijden')
+  return {}
+}
 
-  revalidatePath('/')
+// Admin: enable or disable the "Create match" button for all users.
+export async function setMatchesEnabled(enabled: boolean) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { fout: 'Not signed in.' }
+
+  const { data: profiel } = await supabase
+    .from('profielen').select('is_admin').eq('id', user.id).single()
+  if (!profiel?.is_admin) return { fout: 'Admin only.' }
+
+  const service = await createServiceClient()
+  const { error } = await service
+    .from('instellingen')
+    .upsert({ id: 1, matches_enabled: enabled }, { onConflict: 'id' })
+
+  if (error) return { fout: 'Could not update setting. Run migration_matches.sql in Supabase first.' }
+
+  revalidatePath('/wedstrijden')
   revalidatePath('/admin')
-  revalidatePath('/spelers')
-  revalidatePath('/dashboard')
-  return { succes: true }
+  return {}
 }
 
 export async function annuleerWedstrijd(wedstrijdId: string) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { fout: 'Not signed in.' }
 
-  if (!user) return { fout: 'Niet ingelogd.' }
+  const service = await createServiceClient()
+  const { data: wedstrijd } = await service
+    .from('wedstrijden').select('aangemaakt_door').eq('id', wedstrijdId).single()
 
   const { data: profiel } = await supabase
-    .from('profielen')
-    .select('is_admin')
-    .eq('id', user.id)
-    .single()
+    .from('profielen').select('is_admin').eq('id', user.id).single()
 
-  if (!profiel?.is_admin) return { fout: 'Geen beheerdersrechten.' }
+  if (wedstrijd?.aangemaakt_door !== user.id && !profiel?.is_admin) {
+    return { fout: 'Not authorised.' }
+  }
 
-  await supabase
-    .from('wedstrijden')
-    .update({ status: 'geannuleerd' })
-    .eq('id', wedstrijdId)
+  await service.from('wedstrijden').update({ status: 'geannuleerd' }).eq('id', wedstrijdId)
 
-  revalidatePath('/')
+  revalidatePath('/wedstrijden')
   revalidatePath('/admin')
   return { succes: true }
 }

@@ -36,6 +36,10 @@ const faqs: { q: string; a: string }[] = [
     a: 'Yes — open the event and tap Cancel sign-up. If you were confirmed, the remaining players are automatically reshuffled: the first multiple of 4 in the queue get confirmed and the rest return to the waitlist.',
   },
   {
+    q: 'What happens if I cancel after sign-up closes?',
+    a: 'Sign-up closes 2 hours before the event. If you cancel after that point, up to 3 other confirmed players lose their court and may still be charged for it. A warning is shown before you confirm the cancellation, and the organiser is automatically notified by email. Please only cancel in a genuine emergency.',
+  },
+  {
     q: 'Where do events take place?',
     a: 'Events are organised at padel venues in and around Javea on the Costa Blanca. The specific location is listed on each event card.',
   },

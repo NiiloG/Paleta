@@ -26,6 +26,7 @@ export interface Profiel {
   is_admin: boolean
   aangemaakt_op: string
   player_number: number | null
+  phone: string | null
   club_id: string | null
   email_notifications: boolean
   blur_name: boolean
@@ -57,6 +58,7 @@ export interface EventSignup {
   player_id: string
   status: 'confirmed' | 'waitlisted'
   elo_at_signup: number
+  elo_after: number | null
   signed_up_at: string
   club_id: string | null
   profiel?: Profiel
@@ -87,6 +89,10 @@ export interface Wedstrijd {
   locatie: string
   status: WedstrijdStatus
   max_spelers: number
+  court_booking_confirmed?: boolean
+  match_type: string | null
+  min_level: number | null
+  max_level: number | null
   aangemaakt_door: string | null
   aangemaakt_op: string
   aanmeldingen?: Aanmelding[]
@@ -116,4 +122,5 @@ export interface Resultaat {
 export interface WedstrijdMetDetails extends Wedstrijd {
   aanmeldingen: (Aanmelding & { profiel: Profiel })[]
   resultaat: Resultaat | null
+  aanmaker: { id: string; naam: string; player_number: number | null } | null
 }

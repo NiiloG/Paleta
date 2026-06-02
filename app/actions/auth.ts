@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { createClient, createServiceClient } from '@/lib/supabase/server'
 
-const VALID_STARTING_ELOS = [583, 750, 1250, 1750]
+const VALID_STARTING_ELOS = [286, 857, 1429, 1857]
 
 // Called immediately after client-side signUp to guarantee the correct starting
 // ELO is written, regardless of whether the DB trigger reads metadata correctly.

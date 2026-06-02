@@ -22,7 +22,7 @@ function PaletaLogo() {
             className="text-[8px] lg:text-[9px] font-medium px-1.5 py-0.5 rounded-full uppercase tracking-[0.14em]"
             style={{ background: 'rgba(255,255,255,0.07)', border: '0.5px solid rgba(255,255,255,0.18)', color: 'rgba(255,255,255,0.40)', transform: 'translateY(-3px)', display: 'inline-block' }}
           >
-            early access
+            Beta
           </span>
         </div>
         <p className="leading-none">
@@ -30,6 +30,34 @@ function PaletaLogo() {
           <span className="text-[11px] lg:text-[17px] font-light" style={{ color: 'rgba(255,255,255,0.40)' }}> · JAVEA</span>
         </p>
       </div>
+    </div>
+  )
+}
+
+function MatchesIcon() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <circle cx="12" cy="12" r="10" />
+      <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+      <path d="M2 12h20" />
+    </svg>
+  )
+}
+
+function CalendarIcon() {
+  return (
+    <div className="relative">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <rect x="3" y="4" width="18" height="18" rx="2" />
+        <path d="M16 2v4M8 2v4M3 10h18" />
+      </svg>
+      <svg width="7" height="7" viewBox="0 0 24 24" fill="none" stroke="#f5a623" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+        aria-hidden="true" style={{ position: 'absolute', top: '-4px', right: '-5px' }}>
+        <path d="M6 9H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h2" />
+        <path d="M18 9h2a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2h-2" />
+        <path d="M4 22h16M10 22V16M14 22V16" />
+        <path d="M18 2H6v7a6 6 0 0 0 12 0V2Z" />
+      </svg>
     </div>
   )
 }
@@ -47,14 +75,33 @@ function TrophyIcon() {
   )
 }
 
-const pill = (bg: string, border: string, color: string, text: string) => (
-  <span
-    className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full leading-none"
-    style={{ background: bg, border: `0.5px solid ${border}`, color }}
-  >
-    {text}
-  </span>
-)
+function InfoIcon() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <circle cx="12" cy="12" r="10" />
+      <path d="M12 16v-4M12 8h.01" />
+    </svg>
+  )
+}
+
+function ShieldIcon() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+    </svg>
+  )
+}
+
+function LogoutIcon() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+      <polyline points="16 17 21 12 16 7" />
+      <line x1="21" y1="12" x2="9" y2="12" />
+    </svg>
+  )
+}
+
 
 export default async function Navbar() {
   const supabase = await createClient()
@@ -85,52 +132,53 @@ export default async function Navbar() {
             {user && profiel ? (
               <>
                 <div className="flex items-start gap-4">
-                  <Link href="/wedstrijden" className="flex flex-col items-center gap-0.5 text-sm text-white/60 hover:text-white transition-colors">
+                  <Link href="/wedstrijden" className="flex flex-col items-center gap-1 text-sm text-white/60 hover:text-white transition-colors">
+                    <MatchesIcon />
                     <span>Matches</span>
-                    {pill('rgba(255,255,255,0.09)', 'rgba(255,255,255,0.16)', 'rgba(255,255,255,0.45)', 'Casual')}
                   </Link>
-                  <Link href="/events" className="flex flex-col items-center gap-0.5 text-sm text-white/60 hover:text-white transition-colors">
+                  <Link href="/events" className="flex flex-col items-center gap-1 text-sm text-white/60 hover:text-white transition-colors">
+                    <CalendarIcon />
                     <span>Events</span>
-                    {pill('rgba(245,166,35,0.14)', 'rgba(245,166,35,0.32)', '#f5a623', 'Ranked')}
                   </Link>
-                  <Link href="/spelers" className="flex flex-col items-center gap-0.5 text-sm text-white/60 hover:text-white transition-colors">
-                    <span>Rankings</span>
+                  <Link href="/spelers" className="flex flex-col items-center gap-1 text-sm text-white/60 hover:text-white transition-colors">
                     <TrophyIcon />
+                    <span>Rankings</span>
                   </Link>
-                  <Link href="/info" className="flex flex-col items-center gap-0.5 text-sm text-white/60 hover:text-white transition-colors">
+                  <Link href="/info" className="flex flex-col items-center gap-1 text-sm text-white/60 hover:text-white transition-colors">
+                    <InfoIcon />
                     <span>Info</span>
                   </Link>
                 </div>
 
                 {profiel.is_admin && (
                   <Link href="/admin"
-                    className="text-[11px] font-semibold px-2.5 py-1 rounded-full transition-all hover:opacity-80"
-                    style={{ background: 'rgba(245,166,35,0.18)', border: '0.5px solid rgba(245,166,35,0.40)', color: '#f5a623' }}>
-                    Admin
+                    className="flex flex-col items-center gap-1 text-[11px] font-semibold transition-all hover:opacity-80"
+                    style={{ color: '#f5a623' }}>
+                    <ShieldIcon />
+                    <span>Admin</span>
                   </Link>
                 )}
 
                 <Link href="/dashboard" className="hover:opacity-80 transition-opacity">
-                  <div className="flex items-center gap-2">
-                    <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold select-none flex-shrink-0"
-                      style={{ background: 'rgba(245,166,35,0.15)', border: '0.5px solid rgba(245,166,35,0.35)', color: '#f5a623' }}>
-                      {initial}
-                    </div>
+                  <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full select-none"
+                    style={{ background: 'rgba(245,166,35,0.15)', border: '0.5px solid rgba(245,166,35,0.35)' }}>
                     {profiel.player_number != null && (
-                      <span className="text-xs select-none">
-                        <span style={{ color: 'rgba(255,255,255,0.45)' }}>{profiel.naam.split(' ')[0]}</span>
-                        <span style={{ color: 'rgba(255,255,255,0.22)' }}> · </span>
-                        <span style={{ color: '#f5a623' }}>#{profiel.player_number}</span>
+                      <span className="text-[11px] font-bold" style={{ color: '#f5a623' }}>
+                        {profiel.player_number}
                       </span>
                     )}
+                    <span className="text-[11px]" style={{ color: 'rgba(255,255,255,0.55)' }}>
+                      {profiel.naam.split(' ')[0]}
+                    </span>
                   </div>
                 </Link>
 
                 <div className="w-px h-4 self-center" style={{ background: 'rgba(255,255,255,0.14)' }} />
 
                 <form action={uitloggen}>
-                  <button type="submit" className="text-sm text-white/35 hover:text-white/70 transition-colors">
-                    Sign out
+                  <button type="submit" className="flex flex-col items-center gap-1 text-sm text-white/35 hover:text-white/70 transition-colors">
+                    <LogoutIcon />
+                    <span>Sign out</span>
                   </button>
                 </form>
               </>

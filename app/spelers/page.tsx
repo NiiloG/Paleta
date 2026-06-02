@@ -4,7 +4,19 @@ import { tierCfg, eloToPlaytomic } from '@/lib/tier'
 
 export const revalidate = 0
 
-const MEDAL = ['🥇', '🥈', '🥉']
+function TrophyIcon({ size = 13, style }: { size?: number; style?: React.CSSProperties }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={style} aria-hidden="true">
+      <path d="M6 9H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h2" />
+      <path d="M18 9h2a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2h-2" />
+      <path d="M4 22h16" /><path d="M10 22V16" /><path d="M14 22V16" />
+      <path d="M18 2H6v7a6 6 0 0 0 12 0V2Z" />
+    </svg>
+  )
+}
+
+const RANK_COLOR = ['#f5a623', 'rgba(255,255,255,0.70)', 'rgba(205,127,50,0.85)']
 
 export default async function RanglijstPagina() {
   const supabase = await createClient()
@@ -50,7 +62,7 @@ export default async function RanglijstPagina() {
           <table className="w-full text-sm border-collapse">
             <thead>
               <tr style={{ background: 'rgba(255,255,255,0.07)', borderBottom: '0.5px solid rgba(255,255,255,0.15)' }}>
-                <th className="text-left px-5 py-3 text-[10px] font-semibold uppercase tracking-widest text-white/40 w-12">#</th>
+                <th className="text-left px-5 py-3 text-[10px] font-semibold uppercase tracking-widest text-white/40 w-16">Rank</th>
                 <th className="text-left px-5 py-3 text-[10px] font-semibold uppercase tracking-widest text-white/40 hidden sm:table-cell">ID</th>
                 <th className="text-left px-5 py-3 text-[10px] font-semibold uppercase tracking-widest text-white/40">Player</th>
                 <th className="text-right px-5 py-3 text-[10px] font-semibold uppercase tracking-widest text-white/40">Rating</th>
@@ -74,9 +86,11 @@ export default async function RanglijstPagina() {
                       borderBottom: '0.5px solid rgba(255,255,255,0.08)',
                     }}
                   >
-                    <td className="px-5 py-4 text-center">
-                      <span className="text-sm font-bold" style={{ color: i < 3 ? '#f5a623' : 'rgba(255,255,255,0.30)' }}>
-                        {i < 3 ? MEDAL[i] : i + 1}
+                    <td className="px-5 py-4">
+                      <span className="inline-flex items-center gap-1.5"
+                        style={{ color: i < 3 ? RANK_COLOR[i] : 'rgba(255,255,255,0.25)' }}>
+                        <TrophyIcon size={i < 3 ? 14 : 11} />
+                        <span className="text-sm font-bold tabular-nums">{i + 1}</span>
                       </span>
                     </td>
                     <td className="px-5 py-4 hidden sm:table-cell">
@@ -86,7 +100,7 @@ export default async function RanglijstPagina() {
                             background: 'rgba(245,166,35,0.12)', color: 'rgba(245,166,35,0.70)',
                             ...(speler.blur_number ? { filter: 'blur(5px)', userSelect: 'none' } : {}),
                           }}>
-                          #{speler.player_number}
+                          {speler.player_number}
                         </span>
                       )}
                     </td>

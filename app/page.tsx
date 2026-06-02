@@ -61,9 +61,16 @@ export default function LandingPagina() {
 
   return (
     <div className="flex flex-col min-h-screen">
+      {/* Static gradient on mobile — avoids scroll stutter from fixed video */}
+      <div className="fixed inset-0 sm:hidden pointer-events-none" style={{
+        zIndex: -3,
+        background: 'linear-gradient(160deg, #061420 0%, #0a2a3d 50%, #061420 100%)',
+      }} />
+
+      {/* Video background — desktop only */}
       <video
         autoPlay loop muted playsInline
-        className="fixed inset-0 w-full h-full object-cover pointer-events-none"
+        className="fixed inset-0 w-full h-full object-cover pointer-events-none hidden sm:block"
         style={{ zIndex: -3 }}
       >
         <source src="/videos/Video3_HD.mp4" type="video/mp4" />
@@ -173,6 +180,13 @@ export default function LandingPagina() {
               >
                 {bezig ? 'Signing in…' : 'Sign in'}
               </button>
+
+              <div className="text-center pt-1">
+                <Link href="/forgot-password" className="text-xs transition-colors hover:opacity-80"
+                  style={{ color: 'rgba(255,255,255,0.30)' }}>
+                  Forgot password?
+                </Link>
+              </div>
             </form>
 
             <p className="mt-5 pt-5 text-center text-xs"
@@ -187,8 +201,16 @@ export default function LandingPagina() {
         </div>
       </div>
 
-      {/* Down arrow */}
-      <div className="flex justify-center pb-7">
+      {/* Footer */}
+      <div className="flex flex-col items-center gap-4 pb-7">
+        <p className="text-xs" style={{ color: 'rgba(255,255,255,0.22)' }}>
+          Trouble signing in?{' '}
+          <a href="mailto:ngreenways@protonmail.com"
+            className="transition-colors hover:opacity-80"
+            style={{ color: 'rgba(255,255,255,0.40)' }}>
+            Contact support
+          </a>
+        </p>
         <div className="flex items-center justify-center"
           style={{
             width: '38px', height: '38px', borderRadius: '50%',

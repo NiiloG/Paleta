@@ -125,3 +125,17 @@ html.hc .hc-zone [style*="blur("] [style*="rgba(255,255,255,0.10"] {
   color: #0a2a3d !important;
   border-color: transparent !important;
 }
+
+/* ── 6. Native <select> dropdown: prevent white-on-white in dark mode ──*/
+select option {
+  background-color: #0a2a3d;
+  color: #ffffff;
+}
+
+/* ── 7. Date inputs in light mode: switch color-scheme so native chrome
+        matches the light background; keep the value itself transparent
+        so only the custom overlay span is visible ────────────────────── */
+html.hc input[type="date"] {
+  color-scheme: light;
+  color: transparent !important;
+}

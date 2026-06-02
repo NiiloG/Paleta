@@ -56,16 +56,17 @@ export default function MobileNav({ isLoggedIn, isAdmin, initial, firstName, pla
               <nav className="px-4 py-3">
                 <Link href="/dashboard" onClick={close}
                   className="flex items-center gap-3 px-3 py-3.5 rounded-xl transition-colors hover:bg-white/5 mb-1">
-                  <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0"
-                    style={{ background: 'rgba(245,166,35,0.15)', border: '0.5px solid rgba(245,166,35,0.35)', color: '#f5a623' }}>
-                    {initial}
+                  <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-full select-none"
+                    style={{ background: 'rgba(245,166,35,0.15)', border: '0.5px solid rgba(245,166,35,0.35)' }}>
+                    {playerNumber != null && (
+                      <span className="text-xs font-bold" style={{ color: '#f5a623' }}>
+                        {playerNumber}
+                      </span>
+                    )}
+                    <span className="text-xs" style={{ color: 'rgba(255,255,255,0.55)' }}>
+                      {firstName ?? initial}
+                    </span>
                   </div>
-                  <span className="text-sm">
-                    {firstName
-                      ? <><span style={{ color: 'rgba(255,255,255,0.60)' }}>{firstName}</span>{playerNumber != null && <><span style={{ color: 'rgba(255,255,255,0.25)' }}> · </span><span style={{ color: '#f5a623' }}>#{playerNumber}</span></>}</>
-                      : <span style={{ color: 'rgba(255,255,255,0.60)' }}>My profile</span>
-                    }
-                  </span>
                 </Link>
 
                 <div className="my-1 mx-3" style={{ height: '0.5px', background: 'rgba(255,255,255,0.08)' }} />
