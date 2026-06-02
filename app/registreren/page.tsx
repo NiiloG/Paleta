@@ -10,8 +10,8 @@ const LEVELS = [
   {
     id:    'beginner',
     label: 'Beginner',
-    elo:   583,
-    desc:  'New to padel or just getting started',
+    elo:   286,
+    desc:  'I am still learning the rules and basic shots, and I struggle with balls coming off the glass.',
     color: '#81c784',
     bg:    'rgba(76,175,80,0.12)',
     border:'rgba(76,175,80,0.28)',
@@ -19,8 +19,8 @@ const LEVELS = [
   {
     id:    'intermediate',
     label: 'Intermediate',
-    elo:   750,
-    desc:  'Play regularly, understand the basics',
+    elo:   857,
+    desc:  'I play regularly, can keep a good rally going, and am starting to use lobs and the walls tactically.',
     color: '#6dd0e8',
     bg:    'rgba(42,135,168,0.14)',
     border:'rgba(42,135,168,0.30)',
@@ -28,8 +28,8 @@ const LEVELS = [
   {
     id:    'advanced',
     label: 'Advanced',
-    elo:   1250,
-    desc:  'Competitive player, tournament experience',
+    elo:   1429,
+    desc:  'I play highly competitively, dictate the game at the net, and have mastered shots like the bandeja.',
     color: '#ef9a9a',
     bg:    'rgba(239,83,80,0.14)',
     border:'rgba(239,83,80,0.32)',
@@ -37,8 +37,8 @@ const LEVELS = [
   {
     id:    'expert',
     label: 'Expert',
-    elo:   1750,
-    desc:  'High-level competitive or professional',
+    elo:   1857,
+    desc:  'I play in (semi-)professional tournaments and make almost no unforced errors at a high pace.',
     color: '#f9d070',
     bg:    'rgba(245,166,35,0.16)',
     border:'rgba(245,166,35,0.35)',
@@ -61,12 +61,15 @@ export default function RegistrerenPagina() {
     setFout(null)
     setBezig(true)
 
-    const formData = new FormData(e.currentTarget)
-    const naam      = (formData.get('naam')      as string).trim()
-    const email     = formData.get('email')      as string
+    const formData   = new FormData(e.currentTarget)
+    const cap        = (s: string) => s ? s.charAt(0).toUpperCase() + s.slice(1) : s
+    const voornaam   = cap((formData.get('voornaam')   as string).trim())
+    const achternaam = cap((formData.get('achternaam') as string).trim())
+    const naam       = `${voornaam} ${achternaam}`
+    const email      = formData.get('email')      as string
     const wachtwoord = formData.get('wachtwoord') as string
 
-    if (naam.length < 2)       { setFout('Name must be at least 2 characters.');     setBezig(false); return }
+    if (!voornaam || !achternaam) { setFout('Please enter both first and last name.'); setBezig(false); return }
     if (wachtwoord.length < 8) { setFout('Password must be at least 8 characters.'); setBezig(false); return }
 
     const { data, error } = await supabase.auth.signUp({
@@ -146,10 +149,34 @@ export default function RegistrerenPagina() {
 
         <div style={cardStyle} className="p-8">
           <form onSubmit={handleSubmit} className="space-y-4">
+            {/* First + last name side by side */}
+            <div className="grid grid-cols-2 gap-2">
+              {[
+                { id: 'voornaam',   label: 'First name', placeholder: 'Jan',     autoComplete: 'given-name' },
+                { id: 'achternaam', label: 'Last name',  placeholder: 'Janssen', autoComplete: 'family-name' },
+              ].map(field => (
+                <div key={field.id}>
+                  <label htmlFor={field.id}
+                    className="block text-xs font-medium uppercase tracking-widest mb-2"
+                    style={{ color: 'rgba(255,255,255,0.5)' }}>
+                    {field.label}
+                  </label>
+                  <input
+                    id={field.id} name={field.id} type="text" required
+                    autoComplete={field.autoComplete} placeholder={field.placeholder}
+                    className="w-full px-4 py-3 text-sm text-white placeholder-white/25 rounded-xl outline-none transition-all"
+                    style={inputStyle}
+                    onFocus={e => { e.currentTarget.style.border = '0.5px solid rgba(245,166,35,0.7)'; e.currentTarget.style.boxShadow = '0 0 0 3px rgba(245,166,35,0.10)' }}
+                    onBlur={e  => { e.currentTarget.style.border = '0.5px solid rgba(255,255,255,0.18)'; e.currentTarget.style.boxShadow = 'none' }}
+                  />
+                </div>
+              ))}
+            </div>
+
+            {/* Email + password */}
             {[
-              { id: 'naam',       label: 'Full name', type: 'text',     placeholder: 'Jan Janssen',      autoComplete: 'name' },
-              { id: 'email',      label: 'Email',     type: 'email',    placeholder: 'you@example.com',  autoComplete: 'email' },
-              { id: 'wachtwoord', label: 'Password',  type: 'password', placeholder: '8+ characters',    autoComplete: 'new-password' },
+              { id: 'email',      label: 'Email',    type: 'email',    placeholder: 'you@example.com', autoComplete: 'email' },
+              { id: 'wachtwoord', label: 'Password', type: 'password', placeholder: '8+ characters',   autoComplete: 'new-password' },
             ].map(field => (
               <div key={field.id}>
                 <label htmlFor={field.id}

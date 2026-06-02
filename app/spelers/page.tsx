@@ -19,6 +19,25 @@ export default async function RanglijstPagina() {
         <p className="text-white/50 mt-2 text-sm">Win matches to raise your rating and climb the board.</p>
       </div>
 
+      {/* Tier legend — always visible at top */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-8">
+        {[
+          { range: '0.00 – 1.99', label: 'Beginner',     cfg: tierCfg(0)    },
+          { range: '2.00 – 3.99', label: 'Intermediate', cfg: tierCfg(572)  },
+          { range: '4.00 – 5.99', label: 'Advanced',     cfg: tierCfg(1143) },
+          { range: '6.00 – 7.00', label: 'Expert',       cfg: tierCfg(1715) },
+        ].map(t => (
+          <div
+            key={t.label}
+            className="p-3.5 rounded-xl text-center"
+            style={{ background: t.cfg.bg, border: `0.5px solid ${t.cfg.border}` }}
+          >
+            <p className="text-sm font-semibold" style={{ color: t.cfg.color }}>{t.label}</p>
+            <p className="text-[11px] text-white/35 mt-0.5">{t.range}</p>
+          </div>
+        ))}
+      </div>
+
       {ranglijst.length === 0 ? (
         <div className="p-14 rounded-2xl text-center"
           style={{ background: 'rgba(8,20,38,0.50)', border: '0.5px solid rgba(255,255,255,0.18)', backdropFilter: 'blur(12px)' }}>
@@ -63,13 +82,19 @@ export default async function RanglijstPagina() {
                     <td className="px-5 py-4 hidden sm:table-cell">
                       {speler.player_number != null && (
                         <span className="text-[11px] font-mono px-1.5 py-0.5 rounded"
-                          style={{ background: 'rgba(245,166,35,0.12)', color: 'rgba(245,166,35,0.70)' }}>
+                          style={{
+                            background: 'rgba(245,166,35,0.12)', color: 'rgba(245,166,35,0.70)',
+                            ...(speler.blur_number ? { filter: 'blur(5px)', userSelect: 'none' } : {}),
+                          }}>
                           #{speler.player_number}
                         </span>
                       )}
                     </td>
                     <td className="px-5 py-4">
-                      <p className="text-white font-medium text-sm">{speler.naam}</p>
+                      <p className="text-white font-medium text-sm"
+                        style={speler.blur_name ? { filter: 'blur(6px)', userSelect: 'none' } : undefined}>
+                        {speler.naam}
+                      </p>
                       <span
                         className="inline-block mt-0.5 px-2 py-0.5 text-[10px] font-medium rounded-full"
                         style={{ background: tier.bg, border: `0.5px solid ${tier.border}`, color: tier.color }}
@@ -101,24 +126,6 @@ export default async function RanglijstPagina() {
         </div>
       )}
 
-      {/* Tier legend */}
-      <div className="mt-8 grid grid-cols-2 sm:grid-cols-4 gap-3">
-        {[
-          { range: '5.50 – 7.00', cfg: tierCfg(1500) },
-          { range: '4.00 – 5.49', cfg: tierCfg(1000) },
-          { range: '3.00 – 3.99', cfg: tierCfg(666)  },
-          { range: '1.00 – 2.99', cfg: tierCfg(0)    },
-        ].map(t => (
-          <div
-            key={t.cfg.label}
-            className="p-3.5 rounded-xl text-center"
-            style={{ background: t.cfg.bg, border: `0.5px solid ${t.cfg.border}` }}
-          >
-            <p className="text-sm font-semibold" style={{ color: t.cfg.color }}>{t.cfg.label}</p>
-            <p className="text-[11px] text-white/35 mt-0.5">{t.range}</p>
-          </div>
-        ))}
-      </div>
     </div>
   )
 }

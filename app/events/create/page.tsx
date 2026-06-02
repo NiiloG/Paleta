@@ -25,16 +25,39 @@ const labelStyle: React.CSSProperties = {
   marginBottom: '6px',
 }
 
+const optLabel: React.CSSProperties = {
+  textTransform: 'none',
+  letterSpacing: 0,
+  fontWeight: 400,
+  color: 'rgba(255,255,255,0.25)',
+}
+
+function focusOn(e: React.FocusEvent<HTMLInputElement | HTMLSelectElement>) {
+  e.currentTarget.style.border = '0.5px solid rgba(245,166,35,0.65)'
+}
+function focusOff(e: React.FocusEvent<HTMLInputElement | HTMLSelectElement>) {
+  e.currentTarget.style.border = '0.5px solid rgba(255,255,255,0.18)'
+}
+
 function localDatetimeNow() {
   const now = new Date()
   now.setMinutes(now.getMinutes() - now.getTimezoneOffset())
   return now.toISOString().slice(0, 16)
 }
 
+function levelPickerLabel(val: number): string {
+  if (val >= 6.0) return 'Expert'
+  if (val >= 4.0) return 'Advanced'
+  if (val >= 2.0) return 'Intermediate'
+  return 'Beginner'
+}
+
 export default function CreateEventPage() {
   const router = useRouter()
-  const [bezig, setBezig] = useState(false)
-  const [fout, setFout] = useState<string | null>(null)
+  const [bezig, setBezig]       = useState(false)
+  const [fout, setFout]         = useState<string | null>(null)
+  const [minLevel, setMinLevel] = useState('')
+  const [maxLevel, setMaxLevel] = useState('')
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -65,56 +88,102 @@ export default function CreateEventPage() {
         padding: '2rem',
       }}>
         <form onSubmit={handleSubmit} className="space-y-5">
+
+          {/* Title */}
           <div>
             <label style={labelStyle}>Event title</label>
-            <input
-              name="title" type="text" required placeholder="Summer Americano"
-              style={inputStyle}
-              onFocus={e => { e.currentTarget.style.border = '0.5px solid rgba(245,166,35,0.65)' }}
-              onBlur={e  => { e.currentTarget.style.border = '0.5px solid rgba(255,255,255,0.18)' }}
-            />
+            <input name="title" type="text" required placeholder="Summer Americano"
+              style={inputStyle} onFocus={focusOn} onBlur={focusOff} />
           </div>
 
-          <div>
-            <label style={labelStyle}>Date & time</label>
-            <input
-              name="datetime" type="datetime-local" required
-              defaultValue={localDatetimeNow()}
-              style={inputStyle}
-              onFocus={e => { e.currentTarget.style.border = '0.5px solid rgba(245,166,35,0.65)' }}
-              onBlur={e  => { e.currentTarget.style.border = '0.5px solid rgba(255,255,255,0.18)' }}
-            />
+          {/* Start + End time */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label style={labelStyle}>Start time</label>
+              <input name="datetime" type="datetime-local" required
+                defaultValue={localDatetimeNow()}
+                style={inputStyle} onFocus={focusOn} onBlur={focusOff} />
+            </div>
+            <div>
+              <label style={labelStyle}>End time <span style={optLabel}>(optional)</span></label>
+              <input name="end_time" type="time"
+                style={inputStyle} onFocus={focusOn} onBlur={focusOff} />
+            </div>
           </div>
 
+          {/* Location */}
           <div>
             <label style={labelStyle}>Location</label>
-            <input
-              name="location" type="text" required placeholder="Club Javea"
-              style={inputStyle}
-              onFocus={e => { e.currentTarget.style.border = '0.5px solid rgba(245,166,35,0.65)' }}
-              onBlur={e  => { e.currentTarget.style.border = '0.5px solid rgba(255,255,255,0.18)' }}
-            />
+            <input name="location" type="text" required placeholder="Club Javea"
+              style={inputStyle} onFocus={focusOn} onBlur={focusOff} />
           </div>
 
+          {/* Organizer */}
           <div>
-            <label style={labelStyle}>Organizer <span style={{ color: 'rgba(255,255,255,0.25)', textTransform: 'none', letterSpacing: 0, fontWeight: 400 }}>(optional)</span></label>
-            <input
-              name="organizer" type="text" placeholder="e.g. Club Javea · Niels"
-              style={inputStyle}
-              onFocus={e => { e.currentTarget.style.border = '0.5px solid rgba(245,166,35,0.65)' }}
-              onBlur={e  => { e.currentTarget.style.border = '0.5px solid rgba(255,255,255,0.18)' }}
-            />
+            <label style={labelStyle}>Organizer <span style={optLabel}>(optional)</span></label>
+            <input name="organizer" type="text" placeholder="e.g. Club Javea · Niels"
+              style={inputStyle} onFocus={focusOn} onBlur={focusOff} />
           </div>
 
+          {/* Court count + Court numbers */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label style={labelStyle}>Number of courts</label>
+              <input name="court_count" type="number" required min="1" max="10" defaultValue="2"
+                style={inputStyle} onFocus={focusOn} onBlur={focusOff} />
+              <p className="text-xs text-white/35 mt-1.5">Max players = courts × 4</p>
+            </div>
+            <div>
+              <label style={labelStyle}>Court numbers <span style={optLabel}>(optional)</span></label>
+              <input name="court_numbers" type="text" placeholder="e.g. 3, 5"
+                style={inputStyle} onFocus={focusOn} onBlur={focusOff} />
+              <p className="text-xs text-white/35 mt-1.5">Shown on the event page</p>
+            </div>
+          </div>
+
+          {/* Match type */}
           <div>
-            <label style={labelStyle}>Number of courts</label>
-            <input
-              name="court_count" type="number" required min="1" max="10" defaultValue="2"
-              style={{ ...inputStyle, width: '120px' }}
-              onFocus={e => { e.currentTarget.style.border = '0.5px solid rgba(245,166,35,0.65)' }}
-              onBlur={e  => { e.currentTarget.style.border = '0.5px solid rgba(255,255,255,0.18)' }}
-            />
-            <p className="text-xs text-white/35 mt-1.5">Max players = courts × 4</p>
+            <label style={labelStyle}>Match type</label>
+            <select name="match_type" defaultValue="Mixed"
+              style={inputStyle} onFocus={focusOn} onBlur={focusOff}>
+              <option value="Mixed">Mixed</option>
+              <option value="Men only">Men only</option>
+              <option value="Women only">Women only</option>
+            </select>
+          </div>
+
+          {/* Level range */}
+          <div>
+            <label style={labelStyle}>Level requirements <span style={optLabel}>(optional)</span></label>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <p className="text-[10px] text-white/30 mb-1.5 uppercase tracking-widest">Min (0.0 – 7.0)</p>
+                <input name="min_level" type="number" min="0" max="7" step="0.5"
+                  value={minLevel} onChange={e => setMinLevel(e.target.value)}
+                  placeholder="e.g. 2.5"
+                  style={inputStyle} onFocus={focusOn} onBlur={focusOff} />
+                {minLevel && (
+                  <p className="text-[11px] mt-1.5" style={{ color: '#f5a623' }}>
+                    {levelPickerLabel(parseFloat(minLevel))}
+                  </p>
+                )}
+              </div>
+              <div>
+                <p className="text-[10px] text-white/30 mb-1.5 uppercase tracking-widest">Max (0.0 – 7.0)</p>
+                <input name="max_level" type="number" min="0" max="7" step="0.5"
+                  value={maxLevel} onChange={e => setMaxLevel(e.target.value)}
+                  placeholder="e.g. 5.5"
+                  style={inputStyle} onFocus={focusOn} onBlur={focusOff} />
+                {maxLevel && (
+                  <p className="text-[11px] mt-1.5" style={{ color: '#f5a623' }}>
+                    {levelPickerLabel(parseFloat(maxLevel))}
+                  </p>
+                )}
+              </div>
+            </div>
+            <p className="text-xs text-white/35 mt-1.5">
+              Beginner 1.0–2.5 · Intermediate 2.5–4.0 · Advanced 4.0–5.5 · Expert 5.5–7.0
+            </p>
           </div>
 
           {fout && (
@@ -124,11 +193,9 @@ export default function CreateEventPage() {
             </div>
           )}
 
-          <button
-            type="submit" disabled={bezig}
+          <button type="submit" disabled={bezig}
             className="w-full py-2.5 rounded-xl text-sm font-semibold transition-all"
-            style={{ background: bezig ? 'rgba(245,166,35,0.5)' : '#f5a623', color: '#0a2a3d', cursor: bezig ? 'not-allowed' : 'pointer' }}
-          >
+            style={{ background: bezig ? 'rgba(245,166,35,0.5)' : '#f5a623', color: '#0a2a3d', cursor: bezig ? 'not-allowed' : 'pointer' }}>
             {bezig ? 'Creating…' : 'Create event'}
           </button>
         </form>

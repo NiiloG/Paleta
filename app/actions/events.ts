@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { createClient, createServiceClient } from '@/lib/supabase/server'
 import { generateRoundDraw, calculateEloDeltas } from '@/lib/americano'
-import { sendWaitlistPromotionEmail } from '@/lib/email'
+import { sendWaitlistPromotionEmail, sendDemotedToWaitlistEmail } from '@/lib/email'
 
 const ROUNDS_PER_EVENT = 3
 const SIGNUP_CUTOFF_MS = 2 * 60 * 60 * 1000 // 2 hours
@@ -45,15 +45,140 @@ export async function createEvent(formData: FormData) {
     return { fout: 'All fields are required' }
   }
 
+  const endTime         = (formData.get('end_time')      as string | null)?.trim() || null
+  const courtNumbersRaw = (formData.get('court_numbers') as string | null)?.trim() || ''
+  const courtNumbers    = courtNumbersRaw
+    ? courtNumbersRaw.split(',').map(s => parseInt(s.trim(), 10)).filter(n => !isNaN(n) && n > 0)
+    : null
+  const matchType       = (formData.get('match_type')    as string | null) || null
+  const minLevelRaw     = (formData.get('min_level')     as string | null)?.trim()
+  const maxLevelRaw     = (formData.get('max_level')     as string | null)?.trim()
+  const minLevel        = minLevelRaw ? parseFloat(minLevelRaw) : null
+  const maxLevel        = maxLevelRaw ? parseFloat(maxLevelRaw) : null
+
   const service = await createServiceClient()
   const { data, error } = await service.from('events').insert({
     title, datetime, location, organizer, court_count: courtCount, created_by: user.id,
+    end_time:      endTime,
+    court_numbers: courtNumbers?.length ? courtNumbers : null,
+    match_type:    matchType,
+    min_level:     minLevel,
+    max_level:     maxLevel,
   }).select('id').single()
 
   if (error) return { fout: error.message }
 
   revalidatePath('/events')
   return { id: data.id }
+}
+
+// ── Update event (admin only) ─────────────────────────────────────────────
+export async function updateEvent(formData: FormData) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { fout: 'Not authenticated' }
+
+  const { data: profiel } = await supabase.from('profielen').select('is_admin').eq('id', user.id).single()
+  if (!profiel?.is_admin) return { fout: 'Admin only' }
+
+  const eventId    = formData.get('event_id')    as string
+  const title      = (formData.get('title')      as string).trim()
+  const datetime   = formData.get('datetime')    as string
+  const location   = (formData.get('location')   as string).trim()
+  const organizer  = (formData.get('organizer')  as string | null)?.trim() || null
+  const courtCount = parseInt(formData.get('court_count') as string, 10)
+
+  if (!title || !datetime || !location || isNaN(courtCount) || courtCount < 1) {
+    return { fout: 'All required fields must be filled' }
+  }
+
+  const endTime         = (formData.get('end_time')      as string | null)?.trim() || null
+  const courtNumbersRaw = (formData.get('court_numbers') as string | null)?.trim() || ''
+  const courtNumbers    = courtNumbersRaw
+    ? courtNumbersRaw.split(',').map(s => parseInt(s.trim(), 10)).filter(n => !isNaN(n) && n > 0)
+    : null
+  const matchType       = (formData.get('match_type')    as string | null) || null
+  const minLevelRaw     = (formData.get('min_level')     as string | null)?.trim()
+  const maxLevelRaw     = (formData.get('max_level')     as string | null)?.trim()
+  const minLevel        = minLevelRaw ? parseFloat(minLevelRaw) : null
+  const maxLevel        = maxLevelRaw ? parseFloat(maxLevelRaw) : null
+
+  const service = await createServiceClient()
+
+  const { data: current } = await service.from('events').select('court_count').eq('id', eventId).single()
+  if (!current) return { fout: 'Event not found' }
+  const courtCountChanged = current.court_count !== courtCount
+
+  const { error } = await service.from('events').update({
+    title, datetime, location, organizer,
+    court_count:   courtCount,
+    end_time:      endTime,
+    court_numbers: courtNumbers?.length ? courtNumbers : null,
+    match_type:    matchType,
+    min_level:     minLevel,
+    max_level:     maxLevel,
+  }).eq('id', eventId)
+
+  if (error) return { fout: error.message }
+
+  // Recalculate signup statuses when court_count changes
+  if (courtCountChanged) {
+    const { data: allSignups } = await service
+      .from('event_signups').select('id, player_id, status')
+      .eq('event_id', eventId)
+      .order('signed_up_at', { ascending: true })
+
+    if (allSignups && allSignups.length > 0) {
+      const previouslyWaitlisted = new Set(allSignups.filter(s => s.status === 'waitlisted').map(s => s.player_id))
+      const previouslyConfirmed  = new Set(allSignups.filter(s => s.status === 'confirmed').map(s => s.player_id))
+      const confirmedSpots = Math.min(Math.floor(allSignups.length / 4) * 4, courtCount * 4)
+      const newlyConfirmed: string[] = []
+      const newlyDemoted:   string[] = []
+
+      for (let i = 0; i < allSignups.length; i++) {
+        const s = i < confirmedSpots ? 'confirmed' : 'waitlisted'
+        await service.from('event_signups').update({ status: s }).eq('id', allSignups[i].id)
+        if (s === 'confirmed' && previouslyWaitlisted.has(allSignups[i].player_id)) newlyConfirmed.push(allSignups[i].player_id)
+        if (s === 'waitlisted' && previouslyConfirmed.has(allSignups[i].player_id))  newlyDemoted.push(allSignups[i].player_id)
+      }
+
+      const { data: evData } = await service
+        .from('events').select('title, datetime, location').eq('id', eventId).single()
+
+      if (evData) {
+        if (newlyConfirmed.length > 0) {
+          const { data: players } = await service
+            .from('profielen').select('id, naam, email, email_notifications').in('id', newlyConfirmed)
+          await Promise.all(
+            (players ?? []).filter(p => p.email_notifications !== false).map(p =>
+              sendWaitlistPromotionEmail({
+                to: p.email, name: p.naam,
+                eventTitle: evData.title, eventDatetime: evData.datetime, eventLocation: evData.location,
+              })
+            )
+          )
+        }
+        if (newlyDemoted.length > 0) {
+          const { data: players } = await service
+            .from('profielen').select('id, naam, email, email_notifications').in('id', newlyDemoted)
+          await Promise.all(
+            (players ?? []).filter(p => p.email_notifications !== false).map(p =>
+              sendDemotedToWaitlistEmail({
+                to: p.email, name: p.naam,
+                eventTitle: evData.title, eventDatetime: evData.datetime, eventLocation: evData.location,
+              })
+            )
+          )
+        }
+      }
+    }
+  }
+
+  revalidatePath(`/events/${eventId}`)
+  revalidatePath(`/events/${eventId}/admin`)
+  revalidatePath('/events')
+  revalidatePath('/admin')
+  return {}
 }
 
 // ── Sign up for event ──────────────────────────────────────────────────────
@@ -152,11 +277,14 @@ export async function cancelEventSignup(eventId: string) {
     .from('event_signups').select('id, status').eq('event_id', eventId).eq('player_id', user.id).single()
   if (!signup) return { fout: 'Signup not found' }
 
-  // Snapshot current waitlisted players before deletion
+  // Snapshot statuses before deletion so we can detect status changes
   const { data: before } = await service
     .from('event_signups').select('player_id, status').eq('event_id', eventId)
   const previouslyWaitlisted = new Set(
     (before ?? []).filter(s => s.status === 'waitlisted').map(s => s.player_id)
+  )
+  const previouslyConfirmed = new Set(
+    (before ?? []).filter(s => s.status === 'confirmed').map(s => s.player_id)
   )
 
   await service.from('event_signups').delete().eq('id', signup.id)
@@ -171,6 +299,7 @@ export async function cancelEventSignup(eventId: string) {
     .order('signed_up_at', { ascending: true })
 
   const newlyConfirmed: string[] = []
+  const newlyDemoted: string[] = []
 
   if (remaining && remaining.length > 0 && event) {
     const confirmedSpots = Math.min(
@@ -185,6 +314,9 @@ export async function cancelEventSignup(eventId: string) {
       if (s === 'confirmed' && previouslyWaitlisted.has(remaining[i].player_id)) {
         newlyConfirmed.push(remaining[i].player_id)
       }
+      if (s === 'waitlisted' && previouslyConfirmed.has(remaining[i].player_id)) {
+        newlyDemoted.push(remaining[i].player_id)
+      }
     }
   }
 
@@ -197,6 +329,21 @@ export async function cancelEventSignup(eventId: string) {
       (players ?? [])
         .filter(p => p.email_notifications !== false)
         .map(p => sendWaitlistPromotionEmail({
+          to: p.email, name: p.naam,
+          eventTitle: event.title, eventDatetime: event.datetime, eventLocation: event.location,
+        }))
+    )
+  }
+
+  // Send demotion emails to players moved from confirmed → waitlisted
+  if (newlyDemoted.length > 0 && event) {
+    const { data: players } = await service
+      .from('profielen').select('id, naam, email, email_notifications')
+      .in('id', newlyDemoted)
+    await Promise.all(
+      (players ?? [])
+        .filter(p => p.email_notifications !== false)
+        .map(p => sendDemotedToWaitlistEmail({
           to: p.email, name: p.naam,
           eventTitle: event.title, eventDatetime: event.datetime, eventLocation: event.location,
         }))
@@ -221,7 +368,7 @@ export async function generateEventDraw(formData: FormData) {
 
   const service = await createServiceClient()
 
-  const { data: event } = await service.from('events').select('court_count, is_finalized').eq('id', eventId).single()
+  const { data: event } = await service.from('events').select('court_count, court_numbers, is_finalized').eq('id', eventId).single()
   if (!event) return { fout: 'Event not found' }
   if (event.is_finalized) return { fout: 'Event is finalized' }
 
@@ -256,6 +403,16 @@ export async function generateEventDraw(formData: FormData) {
 
   const activeCourts = signups.length / 4
 
+  // Resolve physical court numbers to use.
+  // If event.court_numbers has exactly activeCourts entries, use those sorted ascending.
+  // Highest court number → strongest players (idx 0); lowest → weakest.
+  const specifiedCourts = ((event.court_numbers ?? []) as number[])
+    .filter(n => Number.isInteger(n) && n > 0)
+    .sort((a, b) => a - b)
+  const courtNumbers: number[] = specifiedCourts.length === activeCourts
+    ? specifiedCourts
+    : Array.from({ length: activeCourts }, (_, i) => i + 1)
+
   // Build player list sorted by event points (desc), ELO as tiebreak
   const players = signups.map(s => {
     const p = (s.profielen as unknown as { id: string; elo_rating: number } | null)
@@ -280,10 +437,13 @@ export async function generateEventDraw(formData: FormData) {
   // Delete existing matches for this round (allow regeneration)
   await service.from('event_matches').delete().eq('event_id', eventId).eq('round_number', roundNumber)
 
+  // m.courtNumber is 1-based internal index from generateRoundDraw.
+  // idx 0 (m.courtNumber=1) carries the strongest players → map to the highest physical court.
+  // Mapping: courtNumbers[activeCourts - m.courtNumber]
   const { error } = await service.from('event_matches').insert(
     matches.map(m => ({
       event_id:     eventId,
-      court_number: m.courtNumber,
+      court_number: courtNumbers[activeCourts - m.courtNumber],
       round_number: m.roundNumber,
       player_a1:    m.playerA1,
       player_a2:    m.playerA2,
@@ -294,7 +454,7 @@ export async function generateEventDraw(formData: FormData) {
 
   if (error) return { fout: error.message }
 
-  // Create empty shells for rounds 2…ROUNDS_PER_EVENT (only if they don't exist yet)
+  // Create empty shells for rounds 2…ROUNDS_PER_EVENT using the same physical court numbers
   for (let r = 2; r <= ROUNDS_PER_EVENT; r++) {
     const { count } = await service
       .from('event_matches')
@@ -304,9 +464,9 @@ export async function generateEventDraw(formData: FormData) {
 
     if ((count ?? 0) === 0) {
       await service.from('event_matches').insert(
-        Array.from({ length: activeCourts }, (_, i) => ({
+        courtNumbers.map(cn => ({
           event_id:     eventId,
-          court_number: i + 1,
+          court_number: cn,
           round_number: r,
         })),
       )
@@ -481,5 +641,163 @@ export async function finalizeEvent(eventId: string) {
   revalidatePath('/events')
   revalidatePath('/spelers')
   revalidatePath('/dashboard')
+  return {}
+}
+
+// ── Admin: remove any player from event ──────────────────────────────────
+export async function adminRemovePlayer(eventId: string, playerId: string) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { fout: 'Not authenticated' }
+
+  const { data: profiel } = await supabase.from('profielen').select('is_admin').eq('id', user.id).single()
+  if (!profiel?.is_admin) return { fout: 'Admin only' }
+
+  const service = await createServiceClient()
+
+  const { data: signup } = await service
+    .from('event_signups').select('id').eq('event_id', eventId).eq('player_id', playerId).single()
+  if (!signup) return { fout: 'Signup not found' }
+
+  const { data: before } = await service.from('event_signups').select('player_id, status').eq('event_id', eventId)
+  const previouslyWaitlisted = new Set((before ?? []).filter(s => s.status === 'waitlisted').map(s => s.player_id))
+  const previouslyConfirmed  = new Set((before ?? []).filter(s => s.status === 'confirmed').map(s => s.player_id))
+
+  await service.from('event_signups').delete().eq('id', signup.id)
+
+  const { data: event } = await service
+    .from('events').select('court_count, title, datetime, location').eq('id', eventId).single()
+
+  const { data: remaining } = await service
+    .from('event_signups').select('id, player_id')
+    .eq('event_id', eventId).order('signed_up_at', { ascending: true })
+
+  const newlyConfirmed: string[] = []
+  const newlyDemoted:   string[] = []
+
+  if (remaining && remaining.length > 0 && event) {
+    const confirmedSpots = Math.min(Math.floor(remaining.length / 4) * 4, event.court_count * 4)
+    for (let i = 0; i < remaining.length; i++) {
+      const s = i < confirmedSpots ? 'confirmed' : 'waitlisted'
+      await service.from('event_signups').update({ status: s }).eq('id', remaining[i].id)
+      if (s === 'confirmed' && previouslyWaitlisted.has(remaining[i].player_id)) newlyConfirmed.push(remaining[i].player_id)
+      if (s === 'waitlisted' && previouslyConfirmed.has(remaining[i].player_id))  newlyDemoted.push(remaining[i].player_id)
+    }
+  }
+
+  if (event) {
+    if (newlyConfirmed.length > 0) {
+      const { data: players } = await service.from('profielen').select('id, naam, email, email_notifications').in('id', newlyConfirmed)
+      await Promise.all((players ?? []).filter(p => p.email_notifications !== false).map(p =>
+        sendWaitlistPromotionEmail({ to: p.email, name: p.naam, eventTitle: event.title, eventDatetime: event.datetime, eventLocation: event.location })
+      ))
+    }
+    if (newlyDemoted.length > 0) {
+      const { data: players } = await service.from('profielen').select('id, naam, email, email_notifications').in('id', newlyDemoted)
+      await Promise.all((players ?? []).filter(p => p.email_notifications !== false).map(p =>
+        sendDemotedToWaitlistEmail({ to: p.email, name: p.naam, eventTitle: event.title, eventDatetime: event.datetime, eventLocation: event.location })
+      ))
+    }
+  }
+
+  revalidatePath(`/events/${eventId}`)
+  revalidatePath(`/events/${eventId}/admin`)
+  return {}
+}
+
+// ── Admin: add any registered player to event ─────────────────────────────
+export async function adminAddPlayer(eventId: string, playerId: string) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { fout: 'Not authenticated' }
+
+  const { data: profiel } = await supabase.from('profielen').select('is_admin').eq('id', user.id).single()
+  if (!profiel?.is_admin) return { fout: 'Admin only' }
+
+  const service = await createServiceClient()
+
+  const { data: event } = await service
+    .from('events').select('court_count, title, datetime, location').eq('id', eventId).single()
+  if (!event) return { fout: 'Event not found' }
+
+  const { data: playerProfile } = await service.from('profielen').select('elo_rating').eq('id', playerId).single()
+  if (!playerProfile) return { fout: 'Player not found' }
+
+  const { data: existing } = await service.from('event_signups').select('player_id, status').eq('event_id', eventId)
+  const previouslyWaitlisted = new Set((existing ?? []).filter(s => s.status === 'waitlisted').map(s => s.player_id))
+
+  const { error } = await service.from('event_signups').insert({
+    event_id: eventId, player_id: playerId,
+    status: 'waitlisted', elo_at_signup: playerProfile.elo_rating,
+  })
+  if (error) {
+    if (error.code === '23505') return { fout: 'Player already signed up' }
+    return { fout: error.message }
+  }
+
+  const { data: allSignups } = await service
+    .from('event_signups').select('id, player_id')
+    .eq('event_id', eventId).order('signed_up_at', { ascending: true })
+
+  const newlyConfirmed: string[] = []
+  if (allSignups && allSignups.length > 0) {
+    const confirmedSpots = Math.min(Math.floor(allSignups.length / 4) * 4, event.court_count * 4)
+    for (let i = 0; i < allSignups.length; i++) {
+      const s = i < confirmedSpots ? 'confirmed' : 'waitlisted'
+      await service.from('event_signups').update({ status: s }).eq('id', allSignups[i].id)
+      if (s === 'confirmed' && previouslyWaitlisted.has(allSignups[i].player_id)) newlyConfirmed.push(allSignups[i].player_id)
+    }
+  }
+
+  if (newlyConfirmed.length > 0) {
+    const { data: players } = await service.from('profielen').select('id, naam, email, email_notifications').in('id', newlyConfirmed)
+    await Promise.all((players ?? []).filter(p => p.email_notifications !== false).map(p =>
+      sendWaitlistPromotionEmail({ to: p.email, name: p.naam, eventTitle: event.title, eventDatetime: event.datetime, eventLocation: event.location })
+    ))
+  }
+
+  revalidatePath(`/events/${eventId}`)
+  revalidatePath(`/events/${eventId}/admin`)
+  return {}
+}
+
+// ── Update court number for a single match (admin only) ──────────────────
+export async function updateMatchCourt(matchId: string, courtNumber: number) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { fout: 'Not authenticated' }
+
+  const { data: profiel } = await supabase.from('profielen').select('is_admin').eq('id', user.id).single()
+  if (!profiel?.is_admin) return { fout: 'Admin only' }
+
+  if (!Number.isInteger(courtNumber) || courtNumber < 1) return { fout: 'Invalid court number' }
+
+  const service = await createServiceClient()
+  const { data: match } = await service.from('event_matches').select('event_id').eq('id', matchId).single()
+  if (!match) return { fout: 'Match not found' }
+
+  const { error } = await service.from('event_matches').update({ court_number: courtNumber }).eq('id', matchId)
+  if (error) return { fout: error.message }
+
+  revalidatePath(`/events/${match.event_id}`)
+  revalidatePath(`/events/${match.event_id}/admin`)
+  return {}
+}
+
+// ── Admin: delete all matches to allow draw regeneration ──────────────────
+export async function resetEventDraw(eventId: string) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { fout: 'Not authenticated' }
+
+  const { data: profiel } = await supabase.from('profielen').select('is_admin').eq('id', user.id).single()
+  if (!profiel?.is_admin) return { fout: 'Admin only' }
+
+  const service = await createServiceClient()
+  const { error } = await service.from('event_matches').delete().eq('event_id', eventId)
+  if (error) return { fout: error.message }
+
+  revalidatePath(`/events/${eventId}`)
+  revalidatePath(`/events/${eventId}/admin`)
   return {}
 }

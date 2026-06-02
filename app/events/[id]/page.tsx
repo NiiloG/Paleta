@@ -29,6 +29,33 @@ const innerPanel: React.CSSProperties = {
   padding: '10px 14px',
 }
 
+function matchTypeCfg(mt: string): React.CSSProperties {
+  if (mt === 'Men only')   return { background: 'rgba(59,130,246,0.15)',  border: '0.5px solid rgba(59,130,246,0.35)',  color: '#60a5fa' }
+  if (mt === 'Women only') return { background: 'rgba(244,114,182,0.15)', border: '0.5px solid rgba(244,114,182,0.35)', color: '#f472b6' }
+  return                          { background: 'rgba(245,166,35,0.15)',  border: '0.5px solid rgba(245,166,35,0.35)',  color: '#f5a623' }
+}
+
+function levelPickerLabel(val: number): string {
+  if (val >= 6.0) return 'Expert'
+  if (val >= 4.0) return 'Advanced'
+  if (val >= 2.0) return 'Intermediate'
+  return 'Beginner'
+}
+
+function levelCfgByDisplay(val: number) {
+  if (val >= 6.0) return { color: '#f9d070', bg: 'rgba(245,166,35,0.16)',  border: 'rgba(245,166,35,0.35)'  }
+  if (val >= 4.0) return { color: '#ef9a9a', bg: 'rgba(239,83,80,0.14)',   border: 'rgba(239,83,80,0.32)'   }
+  if (val >= 2.0) return { color: '#6dd0e8', bg: 'rgba(42,135,168,0.14)',  border: 'rgba(42,135,168,0.30)'  }
+  return               { color: '#81c784', bg: 'rgba(76,175,80,0.12)',   border: 'rgba(76,175,80,0.28)'   }
+}
+
+function levelRangeDesc(min: number | null, max: number | null): string {
+  const lo = levelPickerLabel(min ?? 0)
+  const hi = levelPickerLabel(max ?? 7)
+  const parts = [...new Set([lo, hi].filter(Boolean))]
+  return parts.length > 0 ? ` · ${parts.join(' – ')}` : ''
+}
+
 export default function EventDetailPage() {
   const params = useParams<{ id: string }>()
   const [event, setEvent]     = useState<FullEvent | null>(null)
@@ -111,14 +138,20 @@ export default function EventDetailPage() {
     )
   }
 
-  const d = new Date(event.datetime)
+  const d          = new Date(event.datetime)
   const maxPlayers = event.court_count * 4
-  const confirmed = event.event_signups.filter(s => s.status === 'confirmed')
+  const confirmed  = event.event_signups.filter(s => s.status === 'confirmed')
   const waitlisted = event.event_signups.filter(s => s.status === 'waitlisted')
-  const mySignup = me ? event.event_signups.find(s => s.player_id === me.id) : null
+  const mySignup   = me ? event.event_signups.find(s => s.player_id === me.id) : null
   const signupClosed = Date.now() >= d.getTime() - 2 * 60 * 60 * 1000
-  const canSignUp = !event.is_finalized && !signupClosed && !mySignup && confirmed.length < maxPlayers
-  const canWaitlist = !event.is_finalized && !signupClosed && !mySignup && confirmed.length >= maxPlayers
+  const canSignUp    = !event.is_finalized && !signupClosed && !mySignup && confirmed.length < maxPlayers
+  const canWaitlist  = !event.is_finalized && !signupClosed && !mySignup && confirmed.length >= maxPlayers
+
+  const myDisplayScore  = me ? parseFloat(eloToPlaytomic(me.elo_rating)) : null
+  const levelWarning    = myDisplayScore !== null && (
+    (event.min_level != null && myDisplayScore < event.min_level) ||
+    (event.max_level != null && myDisplayScore > event.max_level)
+  )
 
   // Group matches by round
   const rounds: Record<number, typeof event.event_matches> = {}
@@ -128,7 +161,7 @@ export default function EventDetailPage() {
   })
   const roundNumbers = Object.keys(rounds).map(Number).sort((a, b) => a - b)
 
-  // Results: calculate standings if finalized
+  // Final standings
   const standings: Record<string, { naam: string; playerNumber: number | null; points: number; wins: number; games: number; eloAtSignup: number }> = {}
   if (event.is_finalized) {
     confirmed.forEach(s => {
@@ -140,22 +173,17 @@ export default function EventDetailPage() {
       if (m.team_a_score === null || m.team_b_score === null) return
       const sa = m.team_a_score, sb = m.team_b_score
       ;[m.player_a1, m.player_a2].forEach(id => {
-        if (id && standings[id]) {
-          standings[id].points += sa
-          standings[id].games++
-          if (sa > sb) standings[id].wins++
-        }
+        if (id && standings[id]) { standings[id].points += sa; standings[id].games++; if (sa > sb) standings[id].wins++ }
       })
       ;[m.player_b1, m.player_b2].forEach(id => {
-        if (id && standings[id]) {
-          standings[id].points += sb
-          standings[id].games++
-          if (sb > sa) standings[id].wins++
-        }
+        if (id && standings[id]) { standings[id].points += sb; standings[id].games++; if (sb > sa) standings[id].wins++ }
       })
     })
   }
   const sortedStandings = Object.entries(standings).sort((a, b) => b[1].points - a[1].points)
+
+  const hasLevelReq    = event.min_level != null || event.max_level != null
+  const levelBadgeCfg = hasLevelReq ? levelCfgByDisplay(event.min_level ?? event.max_level ?? 0) : null
 
   return (
     <div className="max-w-3xl mx-auto px-4 sm:px-6 py-12">
@@ -170,10 +198,38 @@ export default function EventDetailPage() {
         <p className="text-white/45 text-sm">
           {d.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
           {' · '}{d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
+          {event.end_time && ` – ${event.end_time.slice(0, 5)}`}
           {' · '}{event.location}
           {' · '}{event.court_count} court{event.court_count !== 1 ? 's' : ''}
+          {event.court_numbers && event.court_numbers.length > 0 && ` (${event.court_numbers.map(n => `#${n}`).join(', ')})`}
           {event.organizer && <>{' · '}Organized by {event.organizer}</>}
         </p>
+
+        {/* Badges */}
+        {(event.match_type || hasLevelReq) && (
+          <div className="flex flex-wrap items-center gap-2 mt-2.5">
+            {event.match_type && (
+              <span className="inline-block text-xs px-2.5 py-1 rounded-full font-medium"
+                style={matchTypeCfg(event.match_type)}>
+                {event.match_type === 'Mixed' ? 'Mixed · Men & Women' : event.match_type}
+              </span>
+            )}
+            {hasLevelReq && levelBadgeCfg && (
+              (event.min_level ?? 0) === 0 && (event.max_level ?? 7) === 7 ? (
+                <span className="inline-block text-xs px-2.5 py-1 rounded-full font-medium"
+                  style={{ background: 'rgba(255,255,255,0.08)', border: '0.5px solid rgba(255,255,255,0.16)', color: 'rgba(255,255,255,0.55)' }}>
+                  All levels
+                </span>
+              ) : (
+                <span className="inline-block text-xs px-2.5 py-1 rounded-full font-medium"
+                  style={{ background: levelBadgeCfg.bg, border: `0.5px solid ${levelBadgeCfg.border}`, color: levelBadgeCfg.color }}>
+                  Level {(event.min_level ?? 0).toFixed(1)} – {(event.max_level ?? 7).toFixed(1)}
+                  {levelRangeDesc(event.min_level, event.max_level)}
+                </span>
+              )
+            )}
+          </div>
+        )}
       </div>
 
       <div className="space-y-5">
@@ -217,6 +273,15 @@ export default function EventDetailPage() {
               </div>
             )}
 
+            {/* Level warning */}
+            {levelWarning && !mySignup && !signupClosed && (
+              <div className="mb-3 px-3 py-2 rounded-lg text-xs leading-relaxed"
+                style={{ background: 'rgba(245,166,35,0.10)', border: '0.5px solid rgba(245,166,35,0.22)', color: 'rgba(255,255,255,0.65)' }}>
+                <span style={{ color: '#f5a623', fontWeight: 600 }}>Level notice: </span>
+                Your rating ({eloToPlaytomic(me!.elo_rating)}) is outside the recommended range for this event ({(event.min_level ?? 0).toFixed(1)} – {(event.max_level ?? 7).toFixed(1)}). You can still sign up.
+              </div>
+            )}
+
             {signupClosed && !mySignup ? (
               <p className="text-center text-xs py-1 rounded-lg"
                 style={{ background: 'rgba(42,135,168,0.10)', border: '0.5px solid rgba(42,135,168,0.22)', color: '#6dd0e8' }}>
@@ -256,7 +321,7 @@ export default function EventDetailPage() {
           {confirmed.length === 0 ? (
             <p className="text-white/35 text-sm">No players yet.</p>
           ) : (
-            <div className="grid grid-cols-2 gap-1 mb-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-1 mb-2">
               {confirmed.map(s => (
                 <div key={s.id} className="flex items-center gap-2 py-1.5 px-2 rounded-lg"
                   style={{ background: 'rgba(255,255,255,0.04)' }}>
@@ -266,9 +331,9 @@ export default function EventDetailPage() {
                       {s.profielen.player_number}
                     </span>
                   )}
-                  <span className="text-sm text-white/80 truncate">{s.profielen?.naam ?? '—'}</span>
+                  <span className="text-sm text-white/80 truncate flex-1">{s.profielen?.naam ?? '—'}</span>
                   {s.profielen?.elo_rating != null && (
-                    <span className="text-xs font-mono ml-auto" style={{ color: eloColor(s.profielen.elo_rating), opacity: 0.8 }}>
+                    <span className="text-xs font-mono" style={{ color: eloColor(s.profielen.elo_rating), opacity: 0.8 }}>
                       {eloToPlaytomic(s.profielen.elo_rating)}
                     </span>
                   )}
@@ -279,11 +344,16 @@ export default function EventDetailPage() {
           {waitlisted.length > 0 && (
             <>
               <p className="text-[10px] font-semibold uppercase tracking-widest text-white/25 mt-3 mb-2">Waitlist</p>
-              <div className="space-y-1">
+              <div className="space-y-0.5">
                 {waitlisted.map((s, i) => (
                   <div key={s.id} className="flex items-center gap-2 py-1 px-2">
                     <span className="text-xs text-white/25 w-4">{i + 1}.</span>
-                    <span className="text-sm text-white/45">{s.profielen?.naam ?? '—'}</span>
+                    <span className="text-sm text-white/45 flex-1">{s.profielen?.naam ?? '—'}</span>
+                    {s.profielen?.elo_rating != null && (
+                      <span className="text-xs font-mono" style={{ color: eloColor(s.profielen.elo_rating), opacity: 0.55 }}>
+                        {eloToPlaytomic(s.profielen.elo_rating)}
+                      </span>
+                    )}
                   </div>
                 ))}
               </div>
@@ -341,7 +411,7 @@ export default function EventDetailPage() {
           </div>
         )}
 
-        {/* Final standings (finalized events) */}
+        {/* Final standings */}
         {event.is_finalized && sortedStandings.length > 0 && (
           <div style={cardStyle} className="p-5">
             <p className="text-[10px] font-semibold uppercase tracking-widest text-white/30 mb-4">Final standings</p>

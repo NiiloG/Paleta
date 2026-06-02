@@ -4,6 +4,8 @@ import type { Profiel } from '@/types'
 import Link from 'next/link'
 import { tierCfg, eloToPlaytomic } from '@/lib/tier'
 import EmailToggle from '@/components/EmailToggle'
+import BlurNameToggle from '@/components/BlurNameToggle'
+import BlurNumberToggle from '@/components/BlurNumberToggle'
 
 export const revalidate = 0
 
@@ -110,18 +112,34 @@ export default async function DashboardPagina() {
               { label: 'Email',         value: p.email },
               { label: 'Member since',  value: new Date(p.aangemaakt_op).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) },
             ].map(row => (
-              <div key={row.label} className="flex justify-between items-center py-3" style={{ borderBottom: '0.5px solid rgba(255,255,255,0.12)' }}>
-                <span className="text-white/40 text-sm">{row.label}</span>
-                <span className="text-white text-sm font-medium">{row.value}</span>
+              <div key={row.label} className="flex justify-between items-center gap-4 py-3" style={{ borderBottom: '0.5px solid rgba(255,255,255,0.12)' }}>
+                <span className="text-white/40 text-sm flex-shrink-0">{row.label}</span>
+                <span className="text-white text-sm font-medium truncate text-right">{row.value}</span>
               </div>
             ))}
             {/* Email notifications toggle */}
-            <div className="flex justify-between items-center py-3">
+            <div className="flex justify-between items-center py-3" style={{ borderBottom: '0.5px solid rgba(255,255,255,0.12)' }}>
               <div>
                 <p className="text-white/40 text-sm">Email notifications</p>
                 <p className="text-white/25 text-xs mt-0.5">Notify when moved from waitlist to confirmed</p>
               </div>
               <EmailToggle initialValue={p.email_notifications ?? true} />
+            </div>
+            {/* Blur name on leaderboard */}
+            <div className="flex justify-between items-center py-3" style={{ borderBottom: '0.5px solid rgba(255,255,255,0.12)' }}>
+              <div>
+                <p className="text-white/40 text-sm">Blur name on leaderboard</p>
+                <p className="text-white/25 text-xs mt-0.5">Your name appears blurred on the public rankings</p>
+              </div>
+              <BlurNameToggle initialValue={p.blur_name ?? false} />
+            </div>
+            {/* Blur player number on leaderboard */}
+            <div className="flex justify-between items-center py-3">
+              <div>
+                <p className="text-white/40 text-sm">Blur player number on leaderboard</p>
+                <p className="text-white/25 text-xs mt-0.5">Your #{p.player_number ?? '—'} badge appears blurred on the public rankings</p>
+              </div>
+              <BlurNumberToggle initialValue={p.blur_number ?? false} />
             </div>
           </div>
         </div>

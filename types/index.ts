@@ -28,15 +28,22 @@ export interface Profiel {
   player_number: number | null
   club_id: string | null
   email_notifications: boolean
+  blur_name: boolean
+  blur_number: boolean
 }
 
 export interface Event {
   id: string
   title: string
   datetime: string
+  end_time: string | null       // "HH:MM:SS" from PostgreSQL TIME
   location: string
   organizer: string | null
   court_count: number
+  court_numbers: number[] | null
+  match_type: string | null     // 'Mixed' | 'Men only' | 'Women only'
+  min_level: number | null
+  max_level: number | null
   is_finalized: boolean
   created_by: string | null
   created_at: string

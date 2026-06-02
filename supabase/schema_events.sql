@@ -146,3 +146,17 @@ CREATE POLICY "event_matches_update_admin" ON event_matches FOR UPDATE
   USING (auth.uid() IN (SELECT id FROM profielen WHERE is_admin = true));
 CREATE POLICY "event_matches_delete_admin" ON event_matches FOR DELETE
   USING (auth.uid() IN (SELECT id FROM profielen WHERE is_admin = true));
+
+-- ============================================================
+-- Extended event fields
+-- ============================================================
+ALTER TABLE events ADD COLUMN IF NOT EXISTS end_time      TIME;
+ALTER TABLE events ADD COLUMN IF NOT EXISTS court_numbers INT[];
+ALTER TABLE events ADD COLUMN IF NOT EXISTS match_type    TEXT DEFAULT 'Mixed'
+  CHECK (match_type IN ('Mixed', 'Men only', 'Women only'));
+ALTER TABLE events ADD COLUMN IF NOT EXISTS min_level     NUMERIC(3,1) CHECK (min_level >= 0 AND min_level <= 7);
+ALTER TABLE events ADD COLUMN IF NOT EXISTS max_level     NUMERIC(3,1) CHECK (max_level >= 0 AND max_level <= 7);
+
+-- Player preferences: blur own name / player number on the public leaderboard
+ALTER TABLE profielen ADD COLUMN IF NOT EXISTS blur_name   BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE profielen ADD COLUMN IF NOT EXISTS blur_number BOOLEAN NOT NULL DEFAULT false;
