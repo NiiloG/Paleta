@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { createClient, createServiceClient } from '@/lib/supabase/server'
 import { maakGebalanceerdeTeams } from '@/lib/matchmaking'
+import { berekenTeamEloNaWedstrijd } from '@/lib/elo'
 import type { Profiel } from '@/types'
 
 export async function aanmeldenVoorWedstrijd(wedstrijdId: string) {
@@ -221,5 +222,75 @@ export async function annuleerWedstrijd(wedstrijdId: string) {
 
   revalidatePath('/wedstrijden')
   revalidatePath('/admin')
+  return { succes: true }
+}
+
+export async function legResultaatVast(formData: FormData) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { fout: 'Not signed in.' }
+
+  const { data: profiel } = await supabase.from('profielen').select('is_admin').eq('id', user.id).single()
+  if (!profiel?.is_admin) return { fout: 'Admin only.' }
+
+  const wedstrijdId = formData.get('wedstrijd_id') as string
+  const team1Score  = parseInt(formData.get('team1_score') as string, 10)
+  const team2Score  = parseInt(formData.get('team2_score') as string, 10)
+
+  if (isNaN(team1Score) || isNaN(team2Score)) return { fout: 'Invalid scores.' }
+
+  const service = createServiceClient()
+
+  const { data: wedstrijd } = await service
+    .from('wedstrijden')
+    .select('id, status, aanmeldingen(speler_id, team, profielen(id, elo_rating, wedstrijden_gespeeld, gewonnen, verloren))')
+    .eq('id', wedstrijdId).single()
+
+  if (!wedstrijd) return { fout: 'Match not found.' }
+  if (wedstrijd.status === 'voltooid') return { fout: 'Result already recorded.' }
+
+  type AanmeldingRij = { speler_id: string; team: number | null; profielen: Profiel }
+  const aanmeldingen = wedstrijd.aanmeldingen as unknown as AanmeldingRij[]
+  const team1 = aanmeldingen.filter(a => a.team === 1).map(a => a.profielen)
+  const team2 = aanmeldingen.filter(a => a.team === 2).map(a => a.profielen)
+
+  if (team1.length !== 2 || team2.length !== 2) return { fout: 'Teams must have exactly 2 players each.' }
+
+  const team1Gewonnen = team1Score > team2Score
+  const nieuweElos = berekenTeamEloNaWedstrijd(
+    [team1[0].elo_rating, team1[1].elo_rating],
+    [team2[0].elo_rating, team2[1].elo_rating],
+    team1Gewonnen,
+  )
+
+  // Update ELO and stats for all four players
+  const updates = [
+    { profiel: team1[0], nieuweElo: nieuweElos.team1[0], gewonnen: team1Gewonnen },
+    { profiel: team1[1], nieuweElo: nieuweElos.team1[1], gewonnen: team1Gewonnen },
+    { profiel: team2[0], nieuweElo: nieuweElos.team2[0], gewonnen: !team1Gewonnen },
+    { profiel: team2[1], nieuweElo: nieuweElos.team2[1], gewonnen: !team1Gewonnen },
+  ]
+
+  for (const u of updates) {
+    await service.from('profielen').update({
+      elo_rating:           Math.max(100, u.nieuweElo),
+      wedstrijden_gespeeld: u.profiel.wedstrijden_gespeeld + 1,
+      gewonnen:             u.profiel.gewonnen + (u.gewonnen ? 1 : 0),
+      verloren:             u.profiel.verloren + (u.gewonnen ? 0 : 1),
+    }).eq('id', u.profiel.id)
+  }
+
+  await service.from('resultaten').insert({
+    wedstrijd_id: wedstrijdId,
+    team1_score:  team1Score,
+    team2_score:  team2Score,
+    vastgelegd_door: user.id,
+  })
+
+  await service.from('wedstrijden').update({ status: 'voltooid' }).eq('id', wedstrijdId)
+
+  revalidatePath('/wedstrijden')
+  revalidatePath('/dashboard')
+  revalidatePath('/spelers')
   return { succes: true }
 }
