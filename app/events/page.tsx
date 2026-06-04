@@ -89,8 +89,8 @@ export default async function EventsPage() {
           <div className="flex items-stretch">
             {/* Date block */}
             <div
-              className="flex flex-col items-center justify-center px-5 py-8 min-w-[80px] text-center flex-shrink-0"
-              style={{ background: 'rgba(245,166,35,0.12)', borderRight: '0.5px solid rgba(255,255,255,0.10)' }}
+              className="event-date-col flex flex-col items-center justify-center px-5 py-8 min-w-[80px] text-center flex-shrink-0"
+              style={{ background: 'rgba(245,166,35,0.18)', borderRight: '0.5px solid rgba(255,255,255,0.10)' }}
             >
               <span className="text-[10px] font-semibold tracking-widest" style={{ color: '#f5a623' }}>{weekday}</span>
               <span className="text-3xl font-bold text-white leading-tight">{day}</span>
@@ -212,7 +212,7 @@ export default async function EventsPage() {
       <div className="flex items-end justify-between mb-10">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.22em] mb-3" style={{ color: '#f5a623' }}>
-            Americano
+            King of the Court
           </p>
           <h1 className="font-serif text-4xl font-bold text-white">Events</h1>
           <p className="text-white/45 mt-2 text-sm">Round-robin tournaments with ELO-balanced draws.</p>

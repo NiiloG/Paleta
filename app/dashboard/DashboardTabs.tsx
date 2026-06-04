@@ -190,14 +190,19 @@ export default function DashboardTabs({ p, positie, totaalSpelers, winPct, histo
                 sub: <span className="text-xs text-white/30">matches</span>,
               },
               {
-                label: 'W / L',
-                value: (
-                  <span className="text-4xl font-bold font-mono tabular-nums">
-                    <span style={{ color: '#f5a623' }}>{p.gewonnen}</span>
-                    <span className="text-white/15 mx-1 text-2xl">/</span>
-                    <span className="text-white/35">{p.verloren}</span>
-                  </span>
-                ),
+                label: 'W / D / L',
+                value: (() => {
+                  const draws = Math.max(0, p.wedstrijden_gespeeld - p.gewonnen - p.verloren)
+                  return (
+                    <span className="text-3xl font-bold font-mono tabular-nums">
+                      <span style={{ color: '#1a7c44' }}>{p.gewonnen}</span>
+                      <span className="text-white/15 mx-1 text-xl">/</span>
+                      <span style={{ color: '#f5a623' }}>{draws}</span>
+                      <span className="text-white/15 mx-1 text-xl">/</span>
+                      <span style={{ color: '#a12425' }}>{p.verloren}</span>
+                    </span>
+                  )
+                })(),
                 sub: <span className="text-xs text-white/30">{winPct}% win rate</span>,
               },
               {
@@ -218,6 +223,105 @@ export default function DashboardTabs({ p, positie, totaalSpelers, winPct, histo
               </div>
             ))}
           </div>
+
+          {/* Rating history chart */}
+          {(() => {
+            const sorted = [...eventHistorie]
+              .filter(r => r.events != null)
+              .sort((a, b) => new Date(a.events!.datetime).getTime() - new Date(b.events!.datetime).getTime())
+
+            type Pt = { elo: number; label: string }
+            const series: Pt[] = []
+            if (sorted.length > 0) {
+              const firstDate = new Date(sorted[0].events!.datetime)
+              series.push({ elo: sorted[0].elo_at_signup, label: firstDate.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) })
+              for (const r of sorted) {
+                if (r.elo_after != null) {
+                  const d = new Date(r.events!.datetime)
+                  series.push({ elo: r.elo_after, label: d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) })
+                }
+              }
+              if (series[series.length - 1].elo !== p.elo_rating) series.push({ elo: p.elo_rating, label: 'Now' })
+            }
+            const points = series.slice(-17)
+            if (points.length < 2) return null
+            const ratings = points.map(pt => parseFloat(eloToPlaytomic(pt.elo)))
+            const W = 400, H = 100, pad = { t: 10, r: 12, b: 24, l: 42 }
+            const pw = W - pad.l - pad.r, ph = H - pad.t - pad.b
+            const minR = Math.min(...ratings), maxR = Math.max(...ratings)
+
+            // Snap Y axis to nearest level boundaries
+            const BOUNDS = [0.00, 2.00, 4.00, 6.00, 7.00]
+            const loSnap = [...BOUNDS].reverse().find(b => b <= minR) ?? 0.00
+            const hiSnap = BOUNDS.find(b => b >= maxR) ?? 7.00
+            const snapSpan = (hiSnap - loSnap) || 2.0
+            const lo = Math.max(0, loSnap - snapSpan * 0.125)
+            const hi = Math.min(7, hiSnap + snapSpan * 0.125)
+            const span = (hi - lo) || 2.0
+            const xOf = (i: number) => pad.l + (i / (points.length - 1)) * pw
+            const yOf = (v: number) => pad.t + ph - ((v - lo) / span) * ph
+            const areaD = ratings.map((v, i) => `${i === 0 ? 'M' : 'L'}${xOf(i).toFixed(1)},${yOf(v).toFixed(1)}`).join(' ')
+              + ` L${xOf(ratings.length-1).toFixed(1)},${(pad.t+ph).toFixed(1)} L${xOf(0).toFixed(1)},${(pad.t+ph).toFixed(1)} Z`
+
+            // Level zone fills (0.20 opacity)
+            const ZONES = [
+              { from: 0.00, to: 2.00, color: 'rgba(129,199,132,0.20)' },
+              { from: 2.00, to: 4.00, color: 'rgba(109,208,232,0.20)' },
+              { from: 4.00, to: 6.00, color: 'rgba(239,154,154,0.20)' },
+              { from: 6.00, to: 7.00, color: 'rgba(249,208,112,0.20)' },
+            ].filter(z => z.from < hi && z.to > lo)
+
+            // Y axis integer ticks — start from first whole number ≥ lo
+            const yTicks: number[] = []
+            for (let v = Math.ceil(lo); v <= Math.floor(hi); v++) yTicks.push(v)
+
+            // Segment color: green up, red down, gold flat
+            const segColor = (i: number) => ratings[i] > ratings[i-1] ? '#1a7c44' : ratings[i] < ratings[i-1] ? '#a12425' : '#f5a623'
+            const dotColor = () => '#f5a623'
+
+            return (
+              <div style={cardStyle} className="p-6">
+                <p className="text-[10px] font-semibold uppercase tracking-widest text-white/30 mb-4">Rating history</p>
+                <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ display: 'block', overflow: 'visible' }}>
+                  {/* Level zone background fills */}
+                  {ZONES.map(z => {
+                    const zTop = yOf(Math.min(z.to, hi))
+                    const zBot = yOf(Math.max(z.from, lo))
+                    return (
+                      <rect key={z.from} x={pad.l} y={zTop} width={pw} height={zBot - zTop} fill={z.color} />
+                    )
+                  })}
+                  {/* Y integer tick labels */}
+                  {yTicks.map(v => (
+                    <text key={v} x={pad.l - 4} y={yOf(v) + 3} textAnchor="end"
+                      fontSize="6.5" style={{ fill: 'var(--chart-label-fill)' }}>{v.toFixed(2)}</text>
+                  ))}
+                  {/* Y tick marks */}
+                  {yTicks.map(v => (
+                    <line key={`tick-${v}`} x1={pad.l - 2} x2={pad.l} y1={yOf(v)} y2={yOf(v)}
+                      stroke="var(--chart-label-fill)" strokeWidth="0.5" opacity={0.4} />
+                  ))}
+                  {/* X labels — first, middle, last (deduped to avoid duplicate keys with 2 points) */}
+                  {[...new Set([0, Math.floor((points.length - 1) / 2), points.length - 1])].map((i) => (
+                    <text key={i} x={xOf(i)} y={H - 4} textAnchor="middle"
+                      fontSize="6.5" style={{ fill: 'var(--chart-label-fill)' }}>{points[i].label}</text>
+                  ))}
+                  {/* Colored line segments */}
+                  {ratings.map((v, i) => i === 0 ? null : (
+                    <line key={i}
+                      x1={xOf(i-1).toFixed(1)} y1={yOf(ratings[i-1]).toFixed(1)}
+                      x2={xOf(i).toFixed(1)}   y2={yOf(v).toFixed(1)}
+                      stroke={segColor(i)} strokeWidth="1.5" strokeLinecap="round" />
+                  ))}
+                  {/* Dots */}
+                  {ratings.map((v, i) => (
+                    <circle key={i} cx={xOf(i)} cy={yOf(v)} r={i === ratings.length-1 ? 3 : 2}
+                      fill={dotColor()} stroke="rgba(8,20,38,0.8)" strokeWidth="1" />
+                  ))}
+                </svg>
+              </div>
+            )
+          })()}
 
           {/* Account details */}
           <div style={cardStyle} className="p-6">

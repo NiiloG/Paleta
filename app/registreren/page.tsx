@@ -68,6 +68,7 @@ export default function RegistrerenPagina() {
     const naam       = `${voornaam} ${achternaam}`
     const email      = formData.get('email')      as string
     const wachtwoord = formData.get('wachtwoord') as string
+    const telefoon   = (formData.get('telefoon')  as string | null)?.trim() || undefined
 
     if (!voornaam || !achternaam) { setFout('Please enter both first and last name.'); setBezig(false); return }
     if (wachtwoord.length < 8) { setFout('Password must be at least 8 characters.'); setBezig(false); return }
@@ -92,7 +93,7 @@ export default function RegistrerenPagina() {
     // Explicitly set the chosen ELO via service role — the DB trigger may default
     // to 1000 if it was created before the metadata-reading version was deployed.
     if (data.user) {
-      await setStartingElo(data.user.id, selectedLevel.elo)
+      await setStartingElo(data.user.id, selectedLevel.elo, telefoon)
     }
 
     if (data.session) {
@@ -194,6 +195,26 @@ export default function RegistrerenPagina() {
                 />
               </div>
             ))}
+
+            {/* Phone number */}
+            <div>
+              <label htmlFor="telefoon"
+                className="block text-xs font-medium uppercase tracking-widest mb-2"
+                style={{ color: 'rgba(255,255,255,0.5)' }}>
+                Phone number <span style={{ color: 'rgba(255,255,255,0.25)', textTransform: 'none', letterSpacing: 0 }}>(optional)</span>
+              </label>
+              <input
+                id="telefoon" name="telefoon" type="tel"
+                autoComplete="tel" placeholder="+34 600 000 000"
+                className="w-full px-4 py-3 text-sm text-white placeholder-white/25 rounded-xl outline-none transition-all"
+                style={inputStyle}
+                onFocus={e => { e.currentTarget.style.border = '0.5px solid rgba(245,166,35,0.7)'; e.currentTarget.style.boxShadow = '0 0 0 3px rgba(245,166,35,0.10)' }}
+                onBlur={e  => { e.currentTarget.style.border = '0.5px solid rgba(255,255,255,0.18)'; e.currentTarget.style.boxShadow = 'none' }}
+              />
+              <p className="mt-1.5 text-[11px] leading-relaxed" style={{ color: 'rgba(255,255,255,0.28)' }}>
+                Used by organisers to reach you if there&apos;s an issue with your registration.
+              </p>
+            </div>
 
             {/* Level selector */}
             <div>

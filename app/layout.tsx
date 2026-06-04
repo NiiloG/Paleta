@@ -26,14 +26,18 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="nl" className={`${inter.variable} ${playfair.variable} h-full`}>
       <body className="min-h-full flex flex-col text-white antialiased" style={{ background: '#061420' }}>
 
-        {/* ── Fixed video background – visible on every page ── */}
-        <video
-          autoPlay loop muted playsInline
-          className="fixed inset-0 w-full h-full object-cover pointer-events-none"
-          style={{ zIndex: -3 }}
-        >
-          <source src="/videos/Video1_SD.mp4" type="video/mp4" />
-        </video>
+        {/* ── Blurred placeholder background – replaces video until restored ── */}
+        <div className="fixed inset-0 pointer-events-none" style={{
+          zIndex: -3,
+          background: [
+            'radial-gradient(ellipse 80% 60% at 20% 30%, #0d3a5c 0%, transparent 70%)',
+            'radial-gradient(ellipse 60% 80% at 75% 60%, #0a4a3a 0%, transparent 65%)',
+            'radial-gradient(ellipse 90% 50% at 50% 100%, #0a2233 0%, transparent 60%)',
+            'linear-gradient(160deg, #061420 0%, #0a2a3d 45%, #061420 100%)',
+          ].join(', '),
+          filter: 'blur(40px)',
+          transform: 'scale(1.05)',
+        }} />
 
         {/* Dark base overlay */}
         <div
@@ -66,8 +70,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <main className="flex-1 pt-16 lg:pt-24 hc-zone">{children}</main>
           <footer className="border-t border-white/10 py-6 text-center text-white/25 text-xs tracking-widest uppercase">
             © {new Date().getFullYear()} paleta · Costa Blanca
-            {/* Version tag — increment minor on each prompt iteration; bump to v2.000 on production launch */}
-            <span className="ml-3" style={{ color: 'rgba(245,166,35,0.30)', letterSpacing: '0.10em' }}>beta v2.000</span>
+            <span className="ml-3" style={{ color: 'rgba(245,166,35,0.30)', letterSpacing: '0.10em' }}>beta v4.000</span>
           </footer>
           <WelcomePopup />
         </HcProvider>

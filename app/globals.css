@@ -93,6 +93,10 @@ html.hc .hc-zone [style*="blur("] [style*="color: rgb(255, 255, 255"] { color: #
 html.hc .hc-zone [style*="blur("] [style*="#f5a623"],
 html.hc .hc-zone [style*="blur("] [style*="rgb(245, 166, 35"] { color: #b8720a !important; }
 
+/* Gold-background elements (buttons) keep black text, not dark-gold */
+html.hc .hc-zone [style*="blur("] [style*="background: #f5a623"],
+html.hc .hc-zone [style*="blur("] [style*="background: rgb(245, 166, 35"] { color: #0a1828 !important; }
+
 html.hc .hc-zone [style*="blur("] [style*="#f9d070"],
 html.hc .hc-zone [style*="blur("] [style*="rgb(249, 208, 112"] { color: #8a6000 !important; }
 
@@ -117,22 +121,48 @@ html.hc .hc-zone [style*="blur("] textarea::placeholder {
   color: rgba(0,0,0,0.40) !important;
   opacity: 1;
 }
-html.hc .hc-zone [style*="blur("] [style*="rgba(255, 255, 255, 0.15"],
-html.hc .hc-zone [style*="blur("] [style*="rgba(255,255,255,0.15"],
-html.hc .hc-zone [style*="blur("] [style*="rgba(255, 255, 255, 0.10"],
-html.hc .hc-zone [style*="blur("] [style*="rgba(255,255,255,0.10"] {
+html.hc .hc-zone [style*="blur("] [style*="rgba(255, 255, 255, 0.15"]:not(.toggle-track),
+html.hc .hc-zone [style*="blur("] [style*="rgba(255,255,255,0.15"]:not(.toggle-track),
+html.hc .hc-zone [style*="blur("] [style*="rgba(255, 255, 255, 0.10"]:not(.toggle-track),
+html.hc .hc-zone [style*="blur("] [style*="rgba(255,255,255,0.10"]:not(.toggle-track) {
   background: #f5a623 !important;
   color: #0a2a3d !important;
   border-color: transparent !important;
 }
 
-/* ── 6. Native <select> dropdown: prevent white-on-white in dark mode ──*/
+/* Toggle tracks: off → grey, on → dark gold (both in sun mode) */
+html.hc .hc-zone [style*="blur("] .toggle-track { background: rgba(0,0,0,0.16) !important; }
+html.hc .hc-zone [style*="blur("] .toggle-track[style*="#f5a623"],
+html.hc .hc-zone [style*="blur("] .toggle-track[style*="rgb(245, 166, 35"] { background: #b8720a !important; }
+
+/* ── 6. Event card date column: boost gold opacity in sun mode so it
+        matches the dark-mode appearance (transparent gold reads much
+        lighter over white than over the dark frosted card) ────────────*/
+html.hc .hc-zone [style*="blur("] .event-date-col {
+  background: rgba(245,166,35,0.40) !important;
+}
+
+/* ── 7. Player ID chip: rgba gold not caught by hex rule → dark gold ──*/
+html.hc .hc-zone [style*="blur("] .player-id-chip { color: #b8720a !important; }
+
+/* ── 8. Warning card (late cancellation): pastel red + black text in sun mode */
+html.hc .hc-zone [style*="blur("].warning-card {
+  background: rgb(255,200,200) !important;
+  border-color: rgba(200,80,80,0.35) !important;
+  color: #0a1828 !important;
+}
+
+/* ── 9. Native <select> dropdown: prevent white-on-white in dark mode ──*/
 select option {
   background-color: #0a2a3d;
   color: #ffffff;
 }
 
-/* ── 7. Date inputs in light mode: switch color-scheme so native chrome
+/* ── 9. Rating chart axis labels: white dark mode, black sun mode ───*/
+:root { --chart-label-fill: rgba(255,255,255,0.75); }
+html.hc { --chart-label-fill: rgba(0,0,0,0.65); }
+
+/* ── 10. Date inputs in light mode: switch color-scheme so native chrome
         matches the light background; keep the value itself transparent
         so only the custom overlay span is visible ────────────────────── */
 html.hc input[type="date"] {

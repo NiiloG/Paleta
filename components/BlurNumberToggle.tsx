@@ -20,7 +20,7 @@ export default function BlurNumberToggle({ initialValue }: { initialValue: boole
       onClick={toggle}
       disabled={busy}
       aria-label={on ? 'Show player number on leaderboard' : 'Blur player number on leaderboard'}
-      className="relative inline-flex h-6 w-11 flex-shrink-0 rounded-full transition-colors duration-200"
+      className="toggle-track relative inline-flex h-6 w-11 flex-shrink-0 rounded-full transition-colors duration-200"
       style={{
         background: on ? '#f5a623' : 'rgba(255,255,255,0.15)',
         cursor: busy ? 'not-allowed' : 'pointer',

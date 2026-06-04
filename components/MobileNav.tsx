@@ -10,9 +10,10 @@ interface Props {
   initial: string
   firstName?: string
   playerNumber?: number | null
+  matchesEnabled?: boolean
 }
 
-export default function MobileNav({ isLoggedIn, isAdmin, initial, firstName, playerNumber }: Props) {
+export default function MobileNav({ isLoggedIn, isAdmin, initial, firstName, playerNumber, matchesEnabled = true }: Props) {
   const [open, setOpen] = useState(false)
   const close = () => setOpen(false)
 
@@ -72,14 +73,14 @@ export default function MobileNav({ isLoggedIn, isAdmin, initial, firstName, pla
                 <div className="my-1 mx-3" style={{ height: '0.5px', background: 'rgba(255,255,255,0.08)' }} />
 
                 {[
-                  { href: '/wedstrijden', label: 'Matches' },
+                  matchesEnabled ? { href: '/wedstrijden', label: 'Matches' } : null,
                   { href: '/events', label: 'Events' },
                   { href: '/spelers', label: 'Rankings' },
                   { href: '/info', label: 'Info' },
-                ].map(item => (
-                  <Link key={item.href} href={item.href} onClick={close}
+                ].filter(Boolean).map(item => (
+                  <Link key={item!.href} href={item!.href} onClick={close}
                     className="flex items-center px-3 py-3.5 rounded-xl text-white/70 hover:text-white hover:bg-white/5 transition-colors text-base font-medium">
-                    {item.label}
+                    {item!.label}
                   </Link>
                 ))}
 
@@ -104,13 +105,13 @@ export default function MobileNav({ isLoggedIn, isAdmin, initial, firstName, pla
               <nav className="px-4 py-3">
                 {[
                   { href: '/', label: 'Sign in' },
-                  { href: '/wedstrijden', label: 'Matches' },
+                  matchesEnabled ? { href: '/wedstrijden', label: 'Matches' } : null,
                   { href: '/events', label: 'Events' },
                   { href: '/info', label: 'Info' },
-                ].map(item => (
-                  <Link key={item.href} href={item.href} onClick={close}
+                ].filter(Boolean).map(item => (
+                  <Link key={item!.href} href={item!.href} onClick={close}
                     className="flex items-center px-3 py-3.5 rounded-xl text-white/70 hover:text-white hover:bg-white/5 transition-colors text-base font-medium">
-                    {item.label}
+                    {item!.label}
                   </Link>
                 ))}
               </nav>

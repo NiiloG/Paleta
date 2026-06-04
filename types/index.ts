@@ -12,6 +12,38 @@ export interface Club {
   location: string | null
 }
 
+// ── Admin ─────────────────────────────────────────────────────────────────
+
+export interface Location {
+  id: string
+  name: string
+  address: string | null
+  maps_url: string | null
+  extra_info: string | null
+  booking_deadline_hours: number | null
+  created_at: string
+}
+
+export interface Cost {
+  id: string
+  description: string
+  amount: number
+  date: string
+  is_monthly: boolean
+  created_at: string
+}
+
+export interface AdminUserRow {
+  id: string
+  naam: string
+  email: string
+  phone: string | null
+  player_number: number | null
+  is_admin: boolean
+  email_confirmed: boolean
+  aangemaakt_op: string
+}
+
 // ── App ───────────────────────────────────────────────────────────────────
 export type WedstrijdStatus = 'open' | 'vol' | 'bezig' | 'voltooid' | 'geannuleerd'
 
@@ -39,6 +71,7 @@ export interface Event {
   datetime: string
   end_time: string | null       // "HH:MM:SS" from PostgreSQL TIME
   location: string
+  location_id: string | null
   organizer: string | null
   court_count: number
   court_numbers: number[] | null

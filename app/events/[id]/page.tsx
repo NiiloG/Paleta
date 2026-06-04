@@ -9,6 +9,7 @@ import type { Event, EventSignup, EventMatch, Profiel } from '@/types'
 import { eloColor, eloToPlaytomic, tierCfg } from '@/lib/tier'
 
 type OrganizerProfile = { id: string; naam: string; email: string; phone: string | null }
+type LocationData = { booking_deadline_hours: number | null; name: string; address: string | null; maps_url: string | null }
 
 type FullEvent = Event & {
   event_signups: (EventSignup & { profielen: Profiel | null })[]
@@ -16,6 +17,7 @@ type FullEvent = Event & {
     a1p: Profiel | null; a2p: Profiel | null; b1p: Profiel | null; b2p: Profiel | null
   })[]
   organizer_profile: OrganizerProfile | null
+  location_data: LocationData | null
 }
 
 const cardStyle: React.CSSProperties = {
@@ -66,7 +68,8 @@ export default function EventDetailPage() {
   const [loading, setLoading] = useState(true)
   const [bezig, setBezig]           = useState(false)
   const [bericht, setBericht]       = useState<{ type: 'ok' | 'err'; tekst: string } | null>(null)
-  const [showCancelWarn, setShowCancelWarn] = useState(false)
+  const [showCancelWarn, setShowCancelWarn]     = useState(false)
+  const [showDeadlineWarn, setShowDeadlineWarn] = useState(false)
 
   async function load() {
     const supabase = createClient()
@@ -80,6 +83,7 @@ export default function EventDetailPage() {
       .from('events')
       .select(`
         *,
+        location_data:locations(booking_deadline_hours, name, address, maps_url),
         event_signups(*, profielen(*)),
         event_matches(
           *,
@@ -116,6 +120,12 @@ export default function EventDetailPage() {
 
   async function handleSignup() {
     if (!me) return
+    // If this location has a booking deadline, show the warning first
+    if (event?.location_data?.booking_deadline_hours != null && !showDeadlineWarn) {
+      setShowDeadlineWarn(true)
+      return
+    }
+    setShowDeadlineWarn(false)
     setBezig(true)
     setBericht(null)
     const result = await signUpForEvent(params.id)
@@ -150,8 +160,7 @@ export default function EventDetailPage() {
 
   function requestCancel() {
     if (!event) return
-    const closed = Date.now() >= new Date(event.datetime).getTime() - 2 * 60 * 60 * 1000
-    if (closed) { setShowCancelWarn(true) } else { handleCancel() }
+    if (signupClosed) { setShowCancelWarn(true) } else { handleCancel() }
   }
 
   if (loading) return <div style={{ minHeight: 'calc(100vh - 4rem)' }} />
@@ -170,7 +179,8 @@ export default function EventDetailPage() {
   const confirmed  = event.event_signups.filter(s => s.status === 'confirmed')
   const waitlisted = event.event_signups.filter(s => s.status === 'waitlisted')
   const mySignup   = me ? event.event_signups.find(s => s.player_id === me.id) : null
-  const signupClosed = Date.now() >= d.getTime() - 2 * 60 * 60 * 1000
+  const cutoffHours  = event.location_data?.booking_deadline_hours ?? 2
+  const signupClosed = Date.now() >= d.getTime() - cutoffHours * 60 * 60 * 1000
   const canSignUp    = !event.is_finalized && !signupClosed && !mySignup && confirmed.length < maxPlayers
   const canWaitlist  = !event.is_finalized && !signupClosed && !mySignup && confirmed.length >= maxPlayers
 
@@ -179,6 +189,27 @@ export default function EventDetailPage() {
     (event.min_level != null && myDisplayScore < event.min_level) ||
     (event.max_level != null && myDisplayScore > event.max_level)
   )
+
+  // Booking deadline for this event's location
+  const bookingDeadline = event.location_data?.booking_deadline_hours != null
+    ? new Date(new Date(event.datetime).getTime() - event.location_data.booking_deadline_hours * 60 * 60 * 1000)
+    : null
+
+  // Round 1 court assignment for the logged-in player
+  const myRound1 = me && mySignup?.status === 'confirmed'
+    ? event.event_matches.find(m =>
+        m.round_number === 1 && m.player_a1 !== null &&
+        (m.player_a1 === me.id || m.player_a2 === me.id || m.player_b1 === me.id || m.player_b2 === me.id)
+      ) ?? null
+    : null
+  const myTeamA   = myRound1 ? (myRound1.player_a1 === me?.id || myRound1.player_a2 === me?.id) : false
+  const myPartner = myRound1 && me
+    ? myTeamA
+      ? (myRound1.player_a1 === me.id ? myRound1.a2p : myRound1.a1p)
+      : (myRound1.player_b1 === me.id ? myRound1.b2p : myRound1.b1p)
+    : null
+  const myOpp1 = myRound1 ? (myTeamA ? myRound1.b1p : myRound1.a1p) : null
+  const myOpp2 = myRound1 ? (myTeamA ? myRound1.b2p : myRound1.a2p) : null
 
   // Group matches by round
   const rounds: Record<number, typeof event.event_matches> = {}
@@ -226,13 +257,62 @@ export default function EventDetailPage() {
 
   return (
     <div className="max-w-3xl mx-auto px-4 sm:px-6 py-12">
+
+      {/* Booking deadline warning modal */}
+      {showDeadlineWarn && bookingDeadline && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
+          {/* Backdrop — separate so HC mode doesn't bleed into modal text */}
+          <div className="absolute inset-0" aria-hidden="true"
+            style={{ background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(4px)' }} />
+          <div className="relative w-full max-w-md rounded-2xl p-6"
+            style={{ background: '#0a1828', border: '1px solid rgba(245,166,35,0.35)' }}>
+            <div className="flex items-center gap-2 mb-4">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#f5a623" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="10"/>
+                <line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+              </svg>
+              <p className="text-sm font-bold uppercase tracking-widest" style={{ color: '#f5a623' }}>Court booking notice</p>
+            </div>
+            <p className="text-white font-semibold text-base mb-3">Before you sign up</p>
+            <p className="text-sm leading-relaxed mb-3" style={{ color: 'rgba(255,255,255,0.65)' }}>
+              This venue requires the court to be booked{' '}
+              <strong className="text-white">{event.location_data!.booking_deadline_hours} hour{event.location_data!.booking_deadline_hours !== 1 ? 's' : ''}</strong>{' '}
+              in advance. Sign-up for this event closes at:
+            </p>
+            <div className="rounded-xl px-4 py-3 mb-3 text-sm font-semibold text-white"
+              style={{ background: 'rgba(245,166,35,0.12)', border: '0.5px solid rgba(245,166,35,0.35)' }}>
+              {bookingDeadline.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })}
+              {' · '}
+              {bookingDeadline.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
+            </div>
+            <div className="rounded-xl px-4 py-3 mb-5" style={{ background: 'rgba(255,255,255,0.05)', border: '0.5px solid rgba(255,255,255,0.12)' }}>
+              <p className="text-sm leading-relaxed" style={{ color: 'rgba(255,255,255,0.60)' }}>
+                Please note that if you cancel after this deadline, you will be responsible for the court booking cost unless you find a replacement player by contacting the organiser.
+              </p>
+            </div>
+            <div className="flex gap-3">
+              <button onClick={() => setShowDeadlineWarn(false)}
+                className="flex-1 py-2.5 rounded-xl text-sm font-semibold transition-all hover:opacity-80"
+                style={{ background: 'rgba(255,255,255,0.08)', border: '0.5px solid rgba(255,255,255,0.18)', color: 'rgba(255,255,255,0.70)' }}>
+                Go back
+              </button>
+              <button onClick={handleSignup} disabled={bezig}
+                className="flex-1 py-2.5 rounded-xl text-sm font-semibold transition-all"
+                style={{ background: bezig ? 'rgba(245,166,35,0.5)' : '#f5a623', color: '#0a2a3d', cursor: bezig ? 'not-allowed' : 'pointer' }}>
+                {bezig ? 'Signing up…' : 'I understand — sign me up'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="mb-2">
         <Link href="/events" className="text-xs text-white/40 hover:text-white/70 transition-colors">← Events</Link>
       </div>
 
       {/* Header */}
       <div className="mb-8">
-        <p className="text-xs font-semibold uppercase tracking-[0.22em] mb-2" style={{ color: '#f5a623' }}>Americano</p>
+        <p className="text-xs font-semibold uppercase tracking-[0.22em] mb-2" style={{ color: '#f5a623' }}>King of the Court</p>
         <h1 className="font-serif text-3xl font-bold text-white mb-1">{event.title}</h1>
         <p className="text-white/45 text-sm">
           {d.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
@@ -240,12 +320,19 @@ export default function EventDetailPage() {
           {event.end_time && ` – ${event.end_time.slice(0, 5)}`}
         </p>
         <p className="text-xl font-semibold mt-1" style={{ color: '#f5a623' }}>
-          {event.location}
+          {event.location_data?.maps_url ? (
+            <a href={event.location_data.maps_url} target="_blank" rel="noopener noreferrer"
+              className="hover:opacity-75 transition-opacity underline decoration-dotted underline-offset-4">
+              {event.location}
+            </a>
+          ) : event.location}
           <span className="mx-2" style={{ color: 'rgba(245,166,35,0.35)' }}>·</span>
-          {event.court_count} court{event.court_count !== 1 ? 's' : ''}
-          {event.court_numbers && event.court_numbers.length > 0 && (
-            <span style={{ color: 'rgba(245,166,35,0.50)' }}> ({event.court_numbers.map(n => `#${n}`).join(', ')})</span>
-          )}
+          <span className="text-sm font-normal">
+            {event.court_count} court{event.court_count !== 1 ? 's' : ''}
+            {event.court_numbers && event.court_numbers.length > 0 && (
+              <span style={{ color: 'rgba(245,166,35,0.50)' }}> ({event.court_numbers.map(n => `#${n}`).join(', ')})</span>
+            )}
+          </span>
         </p>
 
         {/* Badges */}
@@ -319,16 +406,39 @@ export default function EventDetailPage() {
             </div>
             <p className="text-white font-semibold text-base mb-3">You are about to cancel after the deadline.</p>
             <p className="text-sm leading-relaxed mb-4" style={{ color: 'rgba(255,255,255,0.65)' }}>
-              Sign-up closed 2 hours before the event. If you cancel now, <strong className="text-white">3 other players will lose their court</strong> and may still be charged for it — since there won't be enough players to fill the court they were assigned to.
+              Sign-up has closed and the court has been booked. Cancelling now will directly affect the 3 other players on your court.
             </p>
-            <div className="rounded-xl p-4 mb-5" style={{ background: 'rgba(239,68,68,0.10)', border: '0.5px solid rgba(239,68,68,0.30)' }}>
-              <p className="text-xs font-semibold uppercase tracking-wider mb-1" style={{ color: '#f87171' }}>This action will</p>
+            <div className="rounded-xl p-4 mb-4" style={{ background: 'rgba(239,68,68,0.10)', border: '0.5px solid rgba(239,68,68,0.30)' }}>
+              <p className="text-xs font-semibold uppercase tracking-wider mb-1" style={{ color: '#f87171' }}>What happens when you cancel</p>
               <ul className="text-sm space-y-1" style={{ color: 'rgba(255,255,255,0.70)' }}>
-                <li>· Remove you from the event immediately</li>
-                <li>· Move up to 3 confirmed players back to the waitlist</li>
-                <li>· Notify the event organiser of your late cancellation</li>
+                <li>· You'll be removed from the event immediately</li>
+                <li>· Up to 3 confirmed players may be moved back to the waitlist</li>
+                <li>· The event organiser will be notified</li>
               </ul>
             </div>
+            <div className="rounded-xl px-4 py-3 mb-4" style={{ background: 'rgba(255,255,255,0.05)', border: '0.5px solid rgba(255,255,255,0.12)' }}>
+              <p className="text-sm leading-relaxed" style={{ color: 'rgba(255,255,255,0.60)' }}>
+                As the court is already booked, you will be responsible for the <strong className="text-white">full court fee</strong> if no replacement is found. If you have someone in mind, contact the organiser immediately — they can transfer your spot and resolve the cost.
+              </p>
+            </div>
+            {event.organizer_profile && (
+              <div className="rounded-xl px-4 py-3 mb-5" style={{ background: 'rgba(255,255,255,0.04)', border: '0.5px solid rgba(255,255,255,0.10)' }}>
+                <p className="text-[10px] font-semibold uppercase tracking-widest mb-2" style={{ color: 'rgba(255,255,255,0.30)' }}>Organiser contact</p>
+                <p className="text-sm font-medium text-white mb-1">{event.organizer_profile.naam}</p>
+                <a href={`mailto:${event.organizer_profile.email}`}
+                  className="text-xs block hover:opacity-80 transition-opacity"
+                  style={{ color: '#f5a623' }}>
+                  {event.organizer_profile.email}
+                </a>
+                {event.organizer_profile.phone && (
+                  <a href={`tel:${event.organizer_profile.phone}`}
+                    className="text-xs block mt-0.5 hover:opacity-80 transition-opacity"
+                    style={{ color: '#f5a623' }}>
+                    {event.organizer_profile.phone}
+                  </a>
+                )}
+              </div>
+            )}
             <div className="flex gap-3">
               <button onClick={() => setShowCancelWarn(false)}
                 className="flex-1 py-2.5 rounded-xl text-sm font-semibold transition-all hover:opacity-80"
@@ -467,7 +577,7 @@ export default function EventDetailPage() {
             {signupClosed && !mySignup ? (
               <p className="text-center text-xs py-1 rounded-lg"
                 style={{ background: 'rgba(42,135,168,0.10)', border: '0.5px solid rgba(42,135,168,0.22)', color: '#6dd0e8' }}>
-                Sign-up closed — 2 hours before the event
+                Sign-up closed — {cutoffHours} hour{cutoffHours !== 1 ? 's' : ''} before the event
               </p>
             ) : me ? (
               mySignup ? (
@@ -494,6 +604,68 @@ export default function EventDetailPage() {
                 <Link href="/" style={{ color: '#f5a623' }}>Sign in</Link> to register
               </p>
             )}
+          </div>
+        )}
+
+        {/* Your court — shown to confirmed players once the draw is generated */}
+        {myRound1 && (
+          <div style={{ ...cardStyle, border: '0.5px solid rgba(245,166,35,0.38)' }} className="p-5">
+            <p className="text-[10px] font-semibold uppercase tracking-widest mb-4"
+              style={{ color: 'rgba(245,166,35,0.55)' }}>Your starting position</p>
+
+            {/* Big court number */}
+            <div className="text-center mb-5 py-5 rounded-xl"
+              style={{ background: 'rgba(245,166,35,0.08)', border: '0.5px solid rgba(245,166,35,0.22)' }}>
+              <p className="text-[10px] font-semibold uppercase tracking-widest mb-1"
+                style={{ color: 'rgba(245,166,35,0.50)' }}>Court</p>
+              <p className="font-black" style={{ fontSize: '88px', lineHeight: 1, color: '#f5a623' }}>
+                {myRound1.court_number}
+              </p>
+            </div>
+
+            {/* Round 1 match */}
+            <div style={{ background: 'rgba(255,255,255,0.05)', border: '0.5px solid rgba(255,255,255,0.10)', borderRadius: '12px', overflow: 'hidden' }}>
+              <p className="px-4 py-2.5 text-[10px] font-semibold uppercase tracking-widest"
+                style={{ color: 'rgba(255,255,255,0.28)', borderBottom: '0.5px solid rgba(255,255,255,0.07)' }}>
+                Round 1
+              </p>
+              {/* Your team */}
+              <div className="px-4 py-3.5" style={{ borderBottom: '0.5px solid rgba(255,255,255,0.06)' }}>
+                <p className="text-[9px] font-semibold uppercase tracking-widest mb-2.5"
+                  style={{ color: 'rgba(111,207,151,0.70)' }}>Your team</p>
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: '#6fcf97' }} />
+                    <span className="text-sm font-bold text-white">You</span>
+                  </div>
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: '#6fcf97' }} />
+                    <span className="text-sm font-bold text-white">{myPartner?.naam ?? '—'}</span>
+                  </div>
+                </div>
+              </div>
+              {/* VS */}
+              <div className="py-2.5 text-center"
+                style={{ background: 'rgba(255,255,255,0.02)', borderBottom: '0.5px solid rgba(255,255,255,0.06)' }}>
+                <span className="text-xs font-black tracking-[0.24em]"
+                  style={{ color: 'rgba(255,255,255,0.18)' }}>VS</span>
+              </div>
+              {/* Opponents */}
+              <div className="px-4 py-3.5">
+                <p className="text-[9px] font-semibold uppercase tracking-widest mb-2.5"
+                  style={{ color: 'rgba(239,154,154,0.70)' }}>Opponents</p>
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: '#ef9a9a' }} />
+                    <span className="text-sm font-semibold" style={{ color: 'rgba(255,255,255,0.80)' }}>{myOpp1?.naam ?? '—'}</span>
+                  </div>
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: '#ef9a9a' }} />
+                    <span className="text-sm font-semibold" style={{ color: 'rgba(255,255,255,0.80)' }}>{myOpp2?.naam ?? '—'}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         )}
 

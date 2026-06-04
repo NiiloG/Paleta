@@ -13,10 +13,11 @@ export interface DrawMatch {
 }
 
 /**
- * Snake-distributes players across courts by ELO so each court gets
- * a balanced average. Within each court, pairs [1st+4th] vs [2nd+3rd].
+ * Sequential seeding: sorts players by rating (desc), groups them into
+ * blocks of 4, and assigns the top block to the highest court.
+ * Within each court: [1st & 4th] vs [2nd & 3rd] balances the two teams.
  *
- * For round 1, pass players sorted by elo_rating (desc).
+ * For round 1, players are seeded by elo_rating.
  * For round N, pass players sorted by accumulated event points (desc),
  * with elo_rating as tiebreak — caller is responsible for ordering.
  */
@@ -28,27 +29,19 @@ export function generateRoundDraw(players: DrawPlayer[], roundNumber: number): D
   const courtCount = players.length / 4
   const sorted = [...players].sort((a, b) => b.elo_rating - a.elo_rating)
 
-  // Distribute using snake pattern across courts
-  const courtPlayers: DrawPlayer[][] = Array.from({ length: courtCount }, () => [])
-  sorted.forEach((player, i) => {
-    const posInBlock = i % (courtCount * 2)
-    const courtIndex = posInBlock < courtCount
-      ? posInBlock
-      : courtCount * 2 - 1 - posInBlock
-    courtPlayers[courtIndex].push(player)
-  })
+  // Sequential grouping: best 4 → group 0 (top court), next 4 → group 1, etc.
+  const courtPlayers: DrawPlayer[][] = Array.from({ length: courtCount }, (_, i) =>
+    sorted.slice(i * 4, i * 4 + 4)
+  )
 
-  return courtPlayers.map((court, idx) => {
-    const byElo = [...court].sort((a, b) => b.elo_rating - a.elo_rating)
-    return {
-      courtNumber: idx + 1,
-      roundNumber,
-      playerA1: byElo[0].id,
-      playerA2: byElo[3].id,
-      playerB1: byElo[1].id,
-      playerB2: byElo[2].id,
-    }
-  })
+  return courtPlayers.map((court, idx) => ({
+    courtNumber: idx + 1,
+    roundNumber,
+    playerA1: court[0].id,  // 1st (best)  + 4th (worst) = Team A
+    playerA2: court[3].id,
+    playerB1: court[1].id,  // 2nd + 3rd = Team B
+    playerB2: court[2].id,
+  }))
 }
 
 /**

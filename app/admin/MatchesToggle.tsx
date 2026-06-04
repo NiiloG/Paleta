@@ -34,6 +34,7 @@ export default function MatchesToggle({ initialEnabled }: { initialEnabled: bool
           onClick={handleToggle}
           disabled={saving}
           title={enabled ? 'Disable match creation' : 'Enable match creation'}
+          className="toggle-track"
           style={{
             flexShrink: 0,
             width: '44px',

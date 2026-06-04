@@ -113,6 +113,9 @@ export default async function Navbar() {
     profiel = data
   }
 
+  const { data: settings } = await supabase.from('instellingen').select('matches_enabled').eq('id', 1).single()
+  const matchesEnabled = settings?.matches_enabled ?? true
+
   const initial = profiel?.naam?.[0]?.toUpperCase() ?? '?'
 
   return (
@@ -132,10 +135,12 @@ export default async function Navbar() {
             {user && profiel ? (
               <>
                 <div className="flex items-start gap-4">
-                  <Link href="/wedstrijden" className="flex flex-col items-center gap-1 text-sm text-white/60 hover:text-white transition-colors">
-                    <MatchesIcon />
-                    <span>Matches</span>
-                  </Link>
+                  {matchesEnabled && (
+                    <Link href="/wedstrijden" className="flex flex-col items-center gap-1 text-sm text-white/60 hover:text-white transition-colors">
+                      <MatchesIcon />
+                      <span>Matches</span>
+                    </Link>
+                  )}
                   <Link href="/events" className="flex flex-col items-center gap-1 text-sm text-white/60 hover:text-white transition-colors">
                     <CalendarIcon />
                     <span>Events</span>
@@ -185,7 +190,7 @@ export default async function Navbar() {
             ) : (
               <>
                 <Link href="/" className="text-sm text-white/60 hover:text-white transition-colors flex items-center gap-1.5">Sign in</Link>
-                <Link href="/wedstrijden" className="text-sm text-white/60 hover:text-white transition-colors flex items-center gap-1.5">Matches</Link>
+                {matchesEnabled && <Link href="/wedstrijden" className="text-sm text-white/60 hover:text-white transition-colors flex items-center gap-1.5">Matches</Link>}
                 <Link href="/events" className="text-sm text-white/60 hover:text-white transition-colors flex items-center gap-1.5">Events</Link>
                 <Link href="/info" className="text-sm text-white/60 hover:text-white transition-colors flex items-center gap-1.5">Info</Link>
               </>
@@ -200,6 +205,7 @@ export default async function Navbar() {
             initial={initial}
             firstName={profiel?.naam?.split(' ')[0]}
             playerNumber={profiel?.player_number ?? null}
+            matchesEnabled={matchesEnabled}
           />
         </div>
 

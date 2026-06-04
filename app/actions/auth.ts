@@ -8,10 +8,12 @@ const VALID_STARTING_ELOS = [286, 857, 1429, 1857]
 
 // Called immediately after client-side signUp to guarantee the correct starting
 // ELO is written, regardless of whether the DB trigger reads metadata correctly.
-export async function setStartingElo(userId: string, elo: number) {
+export async function setStartingElo(userId: string, elo: number, phone?: string) {
   if (!VALID_STARTING_ELOS.includes(elo)) return
   const service = createServiceClient()
-  await service.from('profielen').update({ elo_rating: elo }).eq('id', userId)
+  const update: Record<string, unknown> = { elo_rating: elo }
+  if (phone) update.phone = phone.trim()
+  await service.from('profielen').update(update).eq('id', userId)
 }
 
 export async function inloggen(formData: FormData) {

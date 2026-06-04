@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import {
@@ -8,6 +8,7 @@ import {
   assignMatchPlayers, updateEvent,
   adminRemovePlayer, adminAddPlayer, resetEventDraw,
   updateMatchCourt, updateAllMatchesCourt,
+  sendDrawNotificationEmails,
 } from '@/app/actions/events'
 import { createClient } from '@/lib/supabase/client'
 import type { Event, EventSignup, EventMatch, Profiel } from '@/types'
@@ -331,192 +332,72 @@ function CourtGroupEditor({ eventId, courtNumber, onSaved }: {
   )
 }
 
-// ── Player assignment card ────────────────────────────────────────────────
-function PlayerAssignmentCard({ match, playerOptions, onSaved, showCourtEditor = true }: {
-  match: Props['event']['event_matches'][0]; playerOptions: PlayerOption[]; onSaved: () => void; showCourtEditor?: boolean
+// ── Round card — inline players + score, no individual save ──────────────
+function RoundCard({ match, playerOptions, score, assignment, onScore, onAssign }: {
+  match: Props['event']['event_matches'][0]
+  playerOptions: PlayerOption[]
+  score: { a: string; b: string }
+  assignment: { a1: string; a2: string; b1: string; b2: string }
+  onScore: (a: string, b: string) => void
+  onAssign: (field: 'a1' | 'a2' | 'b1' | 'b2', val: string) => void
 }) {
-  const [bezig, setBezig] = useState(false)
-  const [fout, setFout]   = useState<string | null>(null)
+  const assigned = match.player_a1 !== null
+  const [editingPlayers, setEditingPlayers] = useState(false)
+  const showDropdowns = !assigned || editingPlayers
 
-  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault(); setFout(null); setBezig(true)
-    const result = await assignMatchPlayers(new FormData(e.currentTarget))
-    if (result?.fout) setFout(result.fout); else onSaved()
-    setBezig(false)
-  }
-
-  const PlayerSelect = ({ name, defaultVal }: { name: string; defaultVal: string | null }) => (
-    <select name={name} required defaultValue={defaultVal ?? ''} style={selectStyle}
+  const Sel = ({ field, val }: { field: 'a1' | 'a2' | 'b1' | 'b2'; val: string }) => (
+    <select value={val} onChange={e => onAssign(field, e.target.value)} style={selectStyle}
       onFocus={e => { e.currentTarget.style.border = '0.5px solid rgba(245,166,35,0.65)' }}
       onBlur={e  => { e.currentTarget.style.border = '0.5px solid rgba(255,255,255,0.15)' }}>
-      <option value="">— select player —</option>
+      <option value="">— player —</option>
       {playerOptions.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}
     </select>
   )
 
   return (
     <div style={innerPanel}>
-      {showCourtEditor
-        ? <CourtNumberEditor matchId={match.id} courtNumber={match.court_number} onSaved={onSaved} />
-        : <p className="text-[10px] font-semibold uppercase tracking-wider text-white/30 mb-3">Round {match.round_number}</p>
-      }
-      <form onSubmit={handleSubmit}>
-        <input type="hidden" name="match_id" value={match.id} />
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
-          <div>
-            <p className="text-[10px] text-white/30 uppercase tracking-wider mb-1.5">Team A</p>
-            <div className="space-y-1.5">
-              <PlayerSelect name="player_a1" defaultVal={match.player_a1} />
-              <PlayerSelect name="player_a2" defaultVal={match.player_a2} />
-            </div>
-          </div>
-          <div>
-            <p className="text-[10px] text-white/30 uppercase tracking-wider mb-1.5">Team B</p>
-            <div className="space-y-1.5">
-              <PlayerSelect name="player_b1" defaultVal={match.player_b1} />
-              <PlayerSelect name="player_b2" defaultVal={match.player_b2} />
-            </div>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <button type="submit" disabled={bezig}
-            className="px-3 py-1.5 rounded-lg text-xs font-semibold"
-            style={{ background: bezig ? 'rgba(245,166,35,0.4)' : '#f5a623', color: '#0a2a3d', cursor: bezig ? 'not-allowed' : 'pointer' }}>
-            {bezig ? '…' : 'Assign players'}
+      <div className="flex items-center justify-between mb-3">
+        <p className="text-[10px] font-semibold uppercase tracking-wider text-white/30">
+          Round {match.round_number}
+        </p>
+        {assigned && (
+          <button type="button" onClick={() => setEditingPlayers(e => !e)}
+            className="text-[11px] transition-colors"
+            style={{ color: editingPlayers ? 'rgba(245,166,35,0.70)' : 'rgba(255,255,255,0.25)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
+            {editingPlayers ? 'Done editing' : 'Edit players'}
           </button>
-          {fout && <p className="text-xs" style={{ color: '#f0a070' }}>{fout}</p>}
-        </div>
-      </form>
-    </div>
-  )
-}
-
-// ── Score entry card ──────────────────────────────────────────────────────
-function MatchCard({ match, onSaved, showCourtEditor = true, playerOptions = [] }: {
-  match: Props['event']['event_matches'][0]; onSaved: () => void; showCourtEditor?: boolean; playerOptions?: PlayerOption[]
-}) {
-  const [bezig, setBezig]     = useState(false)
-  const [fout, setFout]       = useState<string | null>(null)
-  const [editing, setEditing] = useState(false)
-  const scored = match.team_a_score !== null && match.team_b_score !== null
-  const aWon   = scored && match.team_a_score! > match.team_b_score!
-  const bWon   = scored && match.team_b_score! > match.team_a_score!
-
-  const header = showCourtEditor
-    ? <CourtNumberEditor matchId={match.id} courtNumber={match.court_number} onSaved={onSaved} />
-    : <p className="text-[10px] font-semibold uppercase tracking-wider text-white/30 mb-3">Round {match.round_number}</p>
-
-  const PlayerSelect = ({ name, defaultVal }: { name: string; defaultVal: string | null }) => (
-    <select name={name} required defaultValue={defaultVal ?? ''} style={selectStyle}
-      onFocus={e => { e.currentTarget.style.border = '0.5px solid rgba(245,166,35,0.65)' }}
-      onBlur={e  => { e.currentTarget.style.border = '0.5px solid rgba(255,255,255,0.15)' }}>
-      <option value="">— select player —</option>
-      {playerOptions.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}
-    </select>
-  )
-
-  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault(); setFout(null); setBezig(true)
-    const result = await saveEventScore(new FormData(e.currentTarget))
-    if (result?.fout) setFout(result.fout); else onSaved()
-    setBezig(false)
-  }
-
-  async function handleSavePlayers(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault(); setFout(null); setBezig(true)
-    const result = await assignMatchPlayers(new FormData(e.currentTarget))
-    if (result?.fout) setFout(result.fout); else onSaved()
-    setBezig(false)
-  }
-
-  if (editing) {
-    return (
-      <div style={innerPanel}>
-        {header}
-        <form onSubmit={handleSavePlayers}>
-          <input type="hidden" name="match_id" value={match.id} />
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
-            <div>
-              <p className="text-[10px] text-white/30 uppercase tracking-wider mb-1.5">Team A</p>
-              <div className="space-y-1.5">
-                <PlayerSelect name="player_a1" defaultVal={match.player_a1} />
-                <PlayerSelect name="player_a2" defaultVal={match.player_a2} />
-              </div>
-            </div>
-            <div>
-              <p className="text-[10px] text-white/30 uppercase tracking-wider mb-1.5">Team B</p>
-              <div className="space-y-1.5">
-                <PlayerSelect name="player_b1" defaultVal={match.player_b1} />
-                <PlayerSelect name="player_b2" defaultVal={match.player_b2} />
-              </div>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <button type="submit" disabled={bezig}
-              className="px-3 py-1.5 rounded-lg text-xs font-semibold"
-              style={{ background: bezig ? 'rgba(245,166,35,0.4)' : '#f5a623', color: '#0a2a3d', cursor: bezig ? 'not-allowed' : 'pointer' }}>
-              {bezig ? '…' : 'Save players'}
-            </button>
-            <button type="button" onClick={() => { setEditing(false); setFout(null) }}
-              className="px-3 py-1.5 rounded-lg text-xs font-semibold"
-              style={{ background: 'rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.50)' }}>
-              Cancel
-            </button>
-            {fout && <p className="text-xs" style={{ color: '#f0a070' }}>{fout}</p>}
-          </div>
-        </form>
+        )}
       </div>
-    )
-  }
-
-  return (
-    <div style={innerPanel}>
-      {header}
-      <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3">
-        <div style={aWon ? { borderLeft: '2px solid #6fcf97', paddingLeft: '8px' } : {}}>
-          <p className="text-xs font-medium mb-0.5" style={{ color: aWon ? '#6fcf97' : 'rgba(255,255,255,0.40)' }}>Team A {aWon && '✓'}</p>
-          {[match.a1p, match.a2p].map((p, i) => <p key={i} className="text-sm" style={{ color: 'rgba(255,255,255,0.85)' }}>{p?.naam ?? '—'}</p>)}
-        </div>
-        <div className="text-center">
-          {scored ? (
-            <p className="text-2xl font-bold font-mono">
-              <span style={{ color: aWon ? '#6fcf97' : bWon ? '#ef9a9a' : '#fff' }}>{match.team_a_score}</span>
-              <span className="text-white/20 mx-1">–</span>
-              <span style={{ color: bWon ? '#6fcf97' : aWon ? '#ef9a9a' : '#fff' }}>{match.team_b_score}</span>
-            </p>
-          ) : <span className="text-white/20 font-bold">vs</span>}
-        </div>
-        <div className="text-right" style={bWon ? { borderRight: '2px solid #6fcf97', paddingRight: '8px' } : {}}>
-          <p className="text-xs font-medium mb-0.5" style={{ color: bWon ? '#6fcf97' : 'rgba(255,255,255,0.40)' }}>{bWon && '✓ '}Team B</p>
-          {[match.b1p, match.b2p].map((p, i) => <p key={i} className="text-sm text-right" style={{ color: 'rgba(255,255,255,0.85)' }}>{p?.naam ?? '—'}</p>)}
-        </div>
-      </div>
-      <form onSubmit={handleSubmit} className="mt-3 flex items-center gap-2">
-        <input type="hidden" name="match_id" value={match.id} />
-        {['team_a_score', 'team_b_score'].map((name, i) => (
-          <input key={name} name={name} type="number" min="0" max="99" required
-            defaultValue={i === 0 ? (match.team_a_score ?? '') : (match.team_b_score ?? '')}
-            style={scoreInputStyle}
+      <div className="grid grid-cols-[1fr_auto_1fr] items-start gap-3">
+        {/* Team A */}
+        <div className="space-y-1.5">
+          {showDropdowns
+            ? <><Sel field="a1" val={assignment.a1} /><Sel field="a2" val={assignment.a2} /></>
+            : <><p className="text-sm text-white/80">{match.a1p?.naam ?? '—'}</p><p className="text-sm text-white/80">{match.a2p?.naam ?? '—'}</p></>
+          }
+          <input type="number" min="0" max="99" value={score.a} placeholder="–"
+            onChange={e => onScore(e.target.value, score.b)}
+            style={{ ...scoreInputStyle, marginTop: '6px' }}
             onFocus={e => { e.currentTarget.style.border = '0.5px solid rgba(245,166,35,0.65)' }}
             onBlur={e  => { e.currentTarget.style.border = '0.5px solid rgba(255,255,255,0.15)' }}
           />
-        )).reduce((acc, el, i) => i === 0 ? [el] : [...acc, <span key="sep" className="text-white/30 font-bold">–</span>, el], [] as React.ReactNode[])}
-        <button type="submit" disabled={bezig}
-          className="ml-auto px-3 py-1.5 rounded-lg text-xs font-semibold"
-          style={{ background: bezig ? 'rgba(245,166,35,0.4)' : '#f5a623', color: '#0a2a3d', cursor: bezig ? 'not-allowed' : 'pointer' }}>
-          {bezig ? '…' : 'Save'}
-        </button>
-        {fout && <p className="text-xs" style={{ color: '#f0a070' }}>{fout}</p>}
-      </form>
-      {playerOptions.length > 0 && (
-        <button type="button" onClick={() => setEditing(true)}
-          className="mt-2 text-[11px] transition-colors"
-          style={{ color: 'rgba(255,255,255,0.25)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
-          onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.color = 'rgba(255,255,255,0.55)' }}
-          onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.color = 'rgba(255,255,255,0.25)' }}>
-          Edit players
-        </button>
-      )}
+        </div>
+        {/* VS */}
+        <div className="text-white/20 font-bold text-sm" style={{ paddingTop: '6px' }}>vs</div>
+        {/* Team B */}
+        <div className="space-y-1.5">
+          {showDropdowns
+            ? <><Sel field="b1" val={assignment.b1} /><Sel field="b2" val={assignment.b2} /></>
+            : <><p className="text-sm text-white/80">{match.b1p?.naam ?? '—'}</p><p className="text-sm text-white/80">{match.b2p?.naam ?? '—'}</p></>
+          }
+          <input type="number" min="0" max="99" value={score.b} placeholder="–"
+            onChange={e => onScore(score.a, e.target.value)}
+            style={{ ...scoreInputStyle, marginTop: '6px' }}
+            onFocus={e => { e.currentTarget.style.border = '0.5px solid rgba(245,166,35,0.65)' }}
+            onBlur={e  => { e.currentTarget.style.border = '0.5px solid rgba(255,255,255,0.15)' }}
+          />
+        </div>
+      </div>
     </div>
   )
 }
@@ -527,10 +408,19 @@ function EventEditForm({ event, onSaved }: { event: Props['event']; onSaved: () 
   const [fout, setFout]         = useState<string | null>(null)
   const [minLevel, setMinLevel] = useState<string>(event.min_level?.toString() ?? '')
   const [maxLevel, setMaxLevel] = useState<string>(event.max_level?.toString() ?? '')
+  const [location, setLocation]       = useState(event.location)
+  const [locationId, setLocationId]   = useState(event.location_id ?? '')
+  const [savedLocs, setSavedLocs]     = useState<{ id: string; name: string }[]>([])
+  const [manualEntry, setManualEntry] = useState(!event.location_id)
 
   const [isoDate, setIsoDate]         = useState(() => toLocalDatetimeInput(event.datetime).split('T')[0])
   const [editTime, setEditTime]       = useState(() => toLocalDatetimeInput(event.datetime).split('T')[1])
   const [editEndTime, setEditEndTime] = useState(() => event.end_time?.slice(0, 5) ?? '')
+
+  useEffect(() => {
+    createClient().from('locations').select('id, name').order('name')
+      .then(({ data }) => setSavedLocs(data ?? []))
+  }, [])
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault(); setFout(null); setBezig(true)
@@ -570,7 +460,40 @@ function EventEditForm({ event, onSaved }: { event: Props['event']; onSaved: () 
         </div>
         <div>
           <label style={editLabelStyle}>Location</label>
-          <input name="location" type="text" required defaultValue={event.location} style={fieldStyle} onFocus={focusOn} onBlur={focusOff} />
+          <input type="hidden" name="location_id" value={locationId} />
+          {savedLocs.length > 0 && !manualEntry ? (
+            <>
+              <select value={locationId}
+                onChange={e => {
+                  if (e.target.value === '__manual__') {
+                    setManualEntry(true); setLocationId(''); setLocation('')
+                  } else {
+                    const sel = savedLocs.find(l => l.id === e.target.value)
+                    if (sel) { setLocation(sel.name); setLocationId(sel.id) }
+                  }
+                }}
+                style={{ ...fieldStyle, color: locationId ? '#fff' : 'rgba(255,255,255,0.55)' }}
+                onFocus={focusOn} onBlur={focusOff}>
+                <option value="">Select a location…</option>
+                {savedLocs.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+                <option value="__manual__">— Type manually</option>
+              </select>
+              <input type="hidden" name="location" value={location} />
+            </>
+          ) : (
+            <>
+              <input name="location" type="text" required value={location}
+                onChange={e => setLocation(e.target.value)}
+                style={fieldStyle} onFocus={focusOn} onBlur={focusOff} />
+              {savedLocs.length > 0 && (
+                <button type="button" onClick={() => { setManualEntry(false); setLocation(event.location); setLocationId(event.location_id ?? '') }}
+                  className="text-xs mt-1 transition-colors hover:opacity-80"
+                  style={{ color: 'rgba(245,166,35,0.70)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
+                  ← Back to saved locations
+                </button>
+              )}
+            </>
+          )}
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
@@ -618,10 +541,64 @@ function EventEditForm({ event, onSaved }: { event: Props['event']; onSaved: () 
 export default function ScoreEntry({ event: initialEvent }: Props) {
   const router                            = useRouter()
   const event                             = initialEvent
-  const [drawBezig, setDrawBezig]         = useState(false)
-  const [drawFout, setDrawFout]           = useState<string | null>(null)
-  const [finalBezig, setFinalBezig]       = useState(false)
-  const [finalResult, setFinalResult]     = useState<{ fout?: string } | null>(null)
+  const [drawBezig, setDrawBezig]           = useState(false)
+  const [drawFout, setDrawFout]             = useState<string | null>(null)
+  const [finalBezig, setFinalBezig]         = useState(false)
+  const [finalResult, setFinalResult]       = useState<{ fout?: string } | null>(null)
+  const [showDrawEmailModal, setShowDrawEmailModal] = useState(false)
+  const [emailBezig, setEmailBezig]         = useState(false)
+  const [emailResult, setEmailResult]       = useState<{ sent?: number; fout?: string } | null>(null)
+
+  // Unified score + assignment state — keyed by match ID
+  const [scores, setScores] = useState<Record<string, { a: string; b: string }>>(() => {
+    const s: Record<string, { a: string; b: string }> = {}
+    event.event_matches.forEach(m => {
+      s[m.id] = { a: m.team_a_score !== null ? String(m.team_a_score) : '', b: m.team_b_score !== null ? String(m.team_b_score) : '' }
+    })
+    return s
+  })
+  const [assignments, setAssignments] = useState<Record<string, { a1: string; a2: string; b1: string; b2: string }>>(() => {
+    const a: Record<string, { a1: string; a2: string; b1: string; b2: string }> = {}
+    event.event_matches.forEach(m => {
+      a[m.id] = { a1: m.player_a1 ?? '', a2: m.player_a2 ?? '', b1: m.player_b1 ?? '', b2: m.player_b2 ?? '' }
+    })
+    return a
+  })
+  const [saveBezig, setSaveBezig]   = useState(false)
+  const [saveMsg, setSaveMsg]       = useState<{ ok: boolean; text: string } | null>(null)
+
+  async function handleSaveAll() {
+    setSaveBezig(true); setSaveMsg(null)
+    const errors: string[] = []
+    for (const m of event.event_matches) {
+      const sc = scores[m.id]
+      const as = assignments[m.id]
+      if (as.a1 && as.a2 && as.b1 && as.b2) {
+        const fd = new FormData()
+        fd.set('match_id', m.id); fd.set('player_a1', as.a1); fd.set('player_a2', as.a2)
+        fd.set('player_b1', as.b1); fd.set('player_b2', as.b2)
+        const r = await assignMatchPlayers(fd)
+        if (r?.fout) errors.push(`R${m.round_number} Court ${m.court_number}: ${r.fout}`)
+      }
+      if (sc.a !== '' && sc.b !== '') {
+        const sa = parseInt(sc.a, 10), sb = parseInt(sc.b, 10)
+        if (!isNaN(sa) && !isNaN(sb)) {
+          const fd = new FormData()
+          fd.set('match_id', m.id); fd.set('team_a_score', String(sa)); fd.set('team_b_score', String(sb))
+          const r = await saveEventScore(fd)
+          if (r?.fout) errors.push(`R${m.round_number} Court ${m.court_number}: ${r.fout}`)
+        }
+      }
+    }
+    setSaveBezig(false)
+    if (errors.length > 0) {
+      setSaveMsg({ ok: false, text: errors.join(' · ') })
+    } else {
+      setSaveMsg({ ok: true, text: 'All changes saved.' })
+      window.location.reload()
+    }
+  }
+
   // Player management
   const [showAddPlayer, setShowAddPlayer] = useState(false)
   const [available, setAvailable]         = useState<AvailablePlayer[]>([])
@@ -659,8 +636,9 @@ export default function ScoreEntry({ event: initialEvent }: Props) {
     const fd = new FormData()
     fd.set('event_id', event.id); fd.set('round_number', '1')
     const result = await generateEventDraw(fd)
-    if (result?.fout) setDrawFout(result.fout)
-    else window.location.reload()
+    if (result?.fout) { setDrawFout(result.fout); setDrawBezig(false); return }
+    setEmailResult(null)
+    setShowDrawEmailModal(true)
     setDrawBezig(false)
   }
 
@@ -672,9 +650,20 @@ export default function ScoreEntry({ event: initialEvent }: Props) {
     const fd = new FormData()
     fd.set('event_id', event.id); fd.set('round_number', '1')
     const r2 = await generateEventDraw(fd)
-    if (r2?.fout) setDrawFout(r2.fout)
-    else window.location.reload()
+    if (r2?.fout) { setDrawFout(r2.fout); setDrawBezig(false); return }
+    setEmailResult(null)
+    setShowDrawEmailModal(true)
     setDrawBezig(false)
+  }
+
+  async function handleSendDrawEmails() {
+    setEmailBezig(true); setEmailResult(null)
+    const result = await sendDrawNotificationEmails(event.id)
+    setEmailResult(result ?? { fout: 'Unknown error' })
+    setEmailBezig(false)
+    if (!result?.fout) {
+      setTimeout(() => { setShowDrawEmailModal(false); window.location.reload() }, 1500)
+    }
   }
 
   async function handleFinalize() {
@@ -737,6 +726,60 @@ export default function ScoreEntry({ event: initialEvent }: Props) {
 
   return (
     <div className="space-y-5">
+
+      {/* Draw email modal */}
+      {showDrawEmailModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
+          <div className="absolute inset-0" aria-hidden="true"
+            style={{ background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(4px)' }} />
+          <div className="relative w-full max-w-md rounded-2xl p-6"
+            style={{ background: '#0a1828', border: '1px solid rgba(245,166,35,0.35)' }}>
+
+            <div className="flex items-center gap-2 mb-4">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#f5a623" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="20 6 9 17 4 12"/>
+              </svg>
+              <p className="text-sm font-bold uppercase tracking-widest" style={{ color: '#f5a623' }}>Draw generated!</p>
+            </div>
+
+            <p className="text-white font-semibold text-base mb-2">Notify players of their court?</p>
+            <p className="text-sm leading-relaxed mb-5" style={{ color: 'rgba(255,255,255,0.60)' }}>
+              Send a personal email to all <strong className="text-white">{confirmed.length}</strong> confirmed players with their court number and Round 1 match — partner and opponents included.
+            </p>
+
+            {emailResult && (
+              <div className="mb-4 rounded-lg px-3 py-2 text-xs"
+                style={{
+                  background: emailResult.fout ? 'rgba(232,131,74,0.12)' : 'rgba(76,175,80,0.12)',
+                  border: `0.5px solid ${emailResult.fout ? 'rgba(232,131,74,0.30)' : 'rgba(76,175,80,0.30)'}`,
+                  color: emailResult.fout ? '#f0a070' : '#6fcf97',
+                }}>
+                {emailResult.fout ?? `Sent to ${emailResult.sent} player${emailResult.sent !== 1 ? 's' : ''}!`}
+              </div>
+            )}
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => { setShowDrawEmailModal(false); window.location.reload() }}
+                className="flex-1 py-2.5 rounded-xl text-sm font-semibold transition-all hover:opacity-80"
+                style={{ background: 'rgba(255,255,255,0.08)', border: '0.5px solid rgba(255,255,255,0.18)', color: 'rgba(255,255,255,0.65)' }}>
+                Skip
+              </button>
+              <button
+                onClick={handleSendDrawEmails}
+                disabled={emailBezig || !!emailResult?.sent}
+                className="flex-1 py-2.5 rounded-xl text-sm font-semibold transition-all"
+                style={{
+                  background: emailBezig || emailResult?.sent ? 'rgba(245,166,35,0.45)' : '#f5a623',
+                  color: '#0a2a3d',
+                  cursor: emailBezig || emailResult?.sent ? 'not-allowed' : 'pointer',
+                }}>
+                {emailBezig ? 'Sending…' : emailResult?.sent ? 'Sent!' : 'Send emails'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Edit event — always visible */}
       <div style={cardStyle} className="p-5">
@@ -891,7 +934,7 @@ export default function ScoreEntry({ event: initialEvent }: Props) {
         <div style={cardStyle} className="p-5">
           <p className="text-[10px] font-semibold uppercase tracking-widest text-white/30 mb-1">Generate draw</p>
           <p className="text-xs text-white/35 mb-3">
-            Round 1 will be generated by snake draw. Empty courts for rounds 2 and 3 will be created for manual assignment.
+            Players are ranked by rating and divided into courts of 4. Best 4 go to the top court, next 4 to the one below, and so on. Empty rounds 2 and 3 are created for score entry.
           </p>
           {drawFout && <p className="text-xs mb-3" style={{ color: '#f0a070' }}>{drawFout}</p>}
           <button onClick={handleGenerateDraw} disabled={drawBezig}
@@ -940,16 +983,41 @@ export default function ScoreEntry({ event: initialEvent }: Props) {
         <div key={court} style={cardStyle} className="p-5">
           <CourtGroupEditor eventId={event.id} courtNumber={court} onSaved={() => window.location.reload()} />
           <div className="space-y-3">
-            {courts[court].sort((a, b) => a.round_number - b.round_number).map(m =>
-              m.player_a1 === null ? (
-                <PlayerAssignmentCard key={m.id} match={m} playerOptions={playerOptions} onSaved={() => window.location.reload()} showCourtEditor={false} />
-              ) : (
-                <MatchCard key={m.id} match={m} onSaved={() => window.location.reload()} showCourtEditor={false} playerOptions={playerOptions} />
-              )
-            )}
+            {courts[court].sort((a, b) => a.round_number - b.round_number).map(m => (
+              <RoundCard
+                key={m.id}
+                match={m}
+                playerOptions={playerOptions}
+                score={scores[m.id] ?? { a: '', b: '' }}
+                assignment={assignments[m.id] ?? { a1: '', a2: '', b1: '', b2: '' }}
+                onScore={(a, b) => setScores(s => ({ ...s, [m.id]: { a, b } }))}
+                onAssign={(field, val) => setAssignments(s => ({ ...s, [m.id]: { ...s[m.id], [field]: val } }))}
+              />
+            ))}
           </div>
         </div>
       ))}
+
+      {/* Save all */}
+      {courtNumbers.length > 0 && !event.is_finalized && (
+        <div style={cardStyle} className="p-5">
+          {saveMsg && (
+            <p className="text-xs px-3 py-2 rounded-lg mb-3"
+              style={{
+                background: saveMsg.ok ? 'rgba(76,175,80,0.12)' : 'rgba(232,131,74,0.12)',
+                border: `0.5px solid ${saveMsg.ok ? 'rgba(76,175,80,0.32)' : 'rgba(232,131,74,0.30)'}`,
+                color: saveMsg.ok ? '#6fcf97' : '#f0a070',
+              }}>
+              {saveMsg.text}
+            </p>
+          )}
+          <button onClick={handleSaveAll} disabled={saveBezig}
+            className="w-full py-2.5 rounded-xl text-sm font-semibold"
+            style={{ background: saveBezig ? 'rgba(245,166,35,0.5)' : '#f5a623', color: '#0a2a3d', cursor: saveBezig ? 'not-allowed' : 'pointer' }}>
+            {saveBezig ? 'Saving…' : 'Save all scores'}
+          </button>
+        </div>
+      )}
 
       {/* Finalize */}
       {!event.is_finalized && allScored && courtNumbers.length > 0 && (

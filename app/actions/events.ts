@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { createClient, createServiceClient } from '@/lib/supabase/server'
 import { generateRoundDraw, calculateEloDeltas } from '@/lib/americano'
-import { sendWaitlistPromotionEmail, sendDemotedToWaitlistEmail, sendLateCancellationEmail } from '@/lib/email'
+import { sendWaitlistPromotionEmail, sendDemotedToWaitlistEmail, sendLateCancellationEmail, sendDrawNotificationEmail } from '@/lib/email'
 
 const ROUNDS_PER_EVENT = 3
 const SIGNUP_CUTOFF_MS = 2 * 60 * 60 * 1000 // 2 hours
@@ -41,6 +41,9 @@ export async function createEvent(formData: FormData) {
   const organizer  = (formData.get('organizer')  as string | null)?.trim() || null
   const courtCount = parseInt(formData.get('court_count') as string, 10)
 
+  const locationId      = (formData.get('location_id')   as string | null)?.trim() || null
+  if (!locationId) return { fout: 'A saved venue must be selected' }
+
   if (!title || !datetime || !location || isNaN(courtCount) || courtCount < 1) {
     return { fout: 'All fields are required' }
   }
@@ -64,6 +67,7 @@ export async function createEvent(formData: FormData) {
     match_type:    matchType,
     min_level:     minLevel,
     max_level:     maxLevel,
+    location_id:   locationId,
   }).select('id').single()
 
   if (error) return { fout: error.message }
@@ -102,6 +106,7 @@ export async function updateEvent(formData: FormData) {
   const maxLevelRaw     = (formData.get('max_level')     as string | null)?.trim()
   const minLevel        = minLevelRaw ? parseFloat(minLevelRaw) : null
   const maxLevel        = maxLevelRaw ? parseFloat(maxLevelRaw) : null
+  const locationId      = (formData.get('location_id')   as string | null)?.trim() || null
 
   const service = await createServiceClient()
 
@@ -117,6 +122,7 @@ export async function updateEvent(formData: FormData) {
     match_type:    matchType,
     min_level:     minLevel,
     max_level:     maxLevel,
+    location_id:   locationId,
   }).eq('id', eventId)
 
   if (error) return { fout: error.message }
@@ -190,12 +196,17 @@ export async function signUpForEvent(eventId: string) {
   const service = await createServiceClient()
 
   const { data: event } = await service
-    .from('events').select('court_count, is_finalized, datetime, title, location').eq('id', eventId).single()
+    .from('events')
+    .select('court_count, is_finalized, datetime, title, location, locations(booking_deadline_hours)')
+    .eq('id', eventId).single()
   if (!event) return { fout: 'Event not found' }
   if (event.is_finalized) return { fout: 'Event is already finalized' }
 
-  if (Date.now() >= new Date(event.datetime).getTime() - SIGNUP_CUTOFF_MS) {
-    return { fout: 'Sign-up is closed 2 hours before the event' }
+  const locationData = event.locations as unknown as { booking_deadline_hours: number | null } | null
+  const cutoffMs = (locationData?.booking_deadline_hours ?? 2) * 60 * 60 * 1000
+  if (Date.now() >= new Date(event.datetime).getTime() - cutoffMs) {
+    const hours = locationData?.booking_deadline_hours ?? 2
+    return { fout: `Sign-up is closed — this venue requires booking ${hours} hour${hours !== 1 ? 's' : ''} in advance` }
   }
 
   const { data: profiel } = await service.from('profielen').select('elo_rating').eq('id', user.id).single()
@@ -291,7 +302,7 @@ export async function cancelEventSignup(eventId: string) {
 
   // Recalculate all statuses: confirmed = floor(remaining/4)*4 players in signup order
   const { data: event } = await service
-    .from('events').select('court_count, title, datetime, location, created_by').eq('id', eventId).single()
+    .from('events').select('court_count, title, datetime, location, created_by, locations(booking_deadline_hours)').eq('id', eventId).single()
 
   const { data: remaining } = await service
     .from('event_signups').select('id, player_id')
@@ -351,7 +362,9 @@ export async function cancelEventSignup(eventId: string) {
   }
 
   // If sign-up was already closed, notify all admins of the late cancellation
-  const isLate = event && Date.now() >= new Date(event.datetime).getTime() - SIGNUP_CUTOFF_MS
+  const locationData = event ? (event.locations as unknown as { booking_deadline_hours: number | null } | null) : null
+  const cutoffMs = (locationData?.booking_deadline_hours ?? 2) * 60 * 60 * 1000
+  const isLate = event && Date.now() >= new Date(event.datetime).getTime() - cutoffMs
   if (isLate && event) {
     const { data: canceller } = await service.from('profielen').select('naam').eq('id', user.id).single()
     const { data: admins } = await service.from('profielen').select('naam, email').eq('is_admin', true)
@@ -827,6 +840,72 @@ export async function updateAllMatchesCourt(eventId: string, oldCourtNumber: num
   revalidatePath(`/events/${eventId}`)
   revalidatePath(`/events/${eventId}/admin`)
   return {}
+}
+
+// ── Send draw notification emails (admin only) ────────────────────────────
+export async function sendDrawNotificationEmails(eventId: string) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { fout: 'Not authenticated' }
+
+  const { data: profiel } = await supabase.from('profielen').select('is_admin').eq('id', user.id).single()
+  if (!profiel?.is_admin) return { fout: 'Admin only' }
+
+  const service = await createServiceClient()
+
+  const { data: event } = await service.from('events')
+    .select('title, datetime, location, locations(maps_url)').eq('id', eventId).single()
+  if (!event) return { fout: 'Event not found' }
+
+  const mapsUrl = (event.locations as unknown as { maps_url: string | null } | null)?.maps_url ?? null
+
+  const { data: matches } = await service.from('event_matches')
+    .select('court_number, player_a1, player_a2, player_b1, player_b2')
+    .eq('event_id', eventId).eq('round_number', 1).not('player_a1', 'is', null)
+
+  if (!matches || matches.length === 0) return { fout: 'No draw found for round 1' }
+
+  const allIds = new Set<string>()
+  for (const m of matches) {
+    ;[m.player_a1, m.player_a2, m.player_b1, m.player_b2]
+      .filter(Boolean).forEach(id => allIds.add(id as string))
+  }
+
+  const { data: profiles } = await service.from('profielen')
+    .select('id, naam, email, email_notifications').in('id', Array.from(allIds))
+
+  type PMap = { naam: string; email: string; email_notifications: boolean | null }
+  const pMap: Record<string, PMap> = Object.fromEntries((profiles ?? []).map(p => [p.id, p]))
+
+  let sent = 0
+  const sends: Promise<void>[] = []
+
+  for (const m of matches) {
+    const slots = [
+      { pid: m.player_a1, partner: m.player_a2, opp1: m.player_b1, opp2: m.player_b2 },
+      { pid: m.player_a2, partner: m.player_a1, opp1: m.player_b1, opp2: m.player_b2 },
+      { pid: m.player_b1, partner: m.player_b2, opp1: m.player_a1, opp2: m.player_a2 },
+      { pid: m.player_b2, partner: m.player_b1, opp1: m.player_a1, opp2: m.player_a2 },
+    ]
+    for (const { pid, partner, opp1, opp2 } of slots) {
+      if (!pid) continue
+      const p = pMap[pid]
+      if (!p || p.email_notifications === false) continue
+      sends.push(sendDrawNotificationEmail({
+        to: p.email, name: p.naam,
+        courtNumber: m.court_number,
+        partnerName: pMap[partner as string]?.naam ?? '—',
+        opp1Name:    pMap[opp1 as string]?.naam   ?? '—',
+        opp2Name:    pMap[opp2 as string]?.naam   ?? '—',
+        eventTitle: event.title, eventDatetime: event.datetime, eventLocation: event.location,
+        eventMapsUrl: mapsUrl,
+      }))
+      sent++
+    }
+  }
+
+  await Promise.all(sends)
+  return { sent }
 }
 
 // ── Admin: delete all matches to allow draw regeneration ──────────────────

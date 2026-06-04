@@ -20,7 +20,7 @@ export default function EmailToggle({ initialValue }: { initialValue: boolean })
       onClick={toggle}
       disabled={busy}
       aria-label={on ? 'Disable email notifications' : 'Enable email notifications'}
-      className="relative inline-flex h-6 w-11 flex-shrink-0 rounded-full transition-colors duration-200"
+      className="toggle-track relative inline-flex h-6 w-11 flex-shrink-0 rounded-full transition-colors duration-200"
       style={{
         background: on ? '#f5a623' : 'rgba(255,255,255,0.15)',
         cursor: busy ? 'not-allowed' : 'pointer',

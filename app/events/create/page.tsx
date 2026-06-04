@@ -1,7 +1,8 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+import { createClient } from '@/lib/supabase/client'
 import { createEvent } from '@/app/actions/events'
 
 const inputStyle: React.CSSProperties = {
@@ -93,7 +94,7 @@ function DatePicker({ value, onChange }: { value: string; onChange: (v: string) 
         type="date"
         value={value}
         onChange={e => onChange(e.target.value)}
-        style={{ ...inputStyle, color: 'transparent', colorScheme: 'dark' }}
+        style={{ ...inputStyle, color: 'transparent', WebkitTextFillColor: 'transparent', colorScheme: 'dark' }}
         onFocus={focusOn}
         onBlur={focusOff}
       />
@@ -110,6 +111,14 @@ export default function CreateEventPage() {
   const [isoDate, setIsoDate]     = useState(localIsoDateNow)
   const [startTime, setStartTime] = useState(localTimeNow)
   const [endTime, setEndTime]     = useState('')
+  const [location, setLocation]     = useState('')
+  const [locationId, setLocationId] = useState('')
+  const [savedLocs, setSavedLocs]   = useState<{ id: string; name: string }[]>([])
+
+  useEffect(() => {
+    createClient().from('locations').select('id, name').order('name')
+      .then(({ data }) => setSavedLocs(data ?? []))
+  }, [])
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -171,11 +180,35 @@ export default function CreateEventPage() {
             </div>
           </div>
 
-          {/* Location */}
+          {/* Location — must be a saved venue (booking_deadline_hours comes from there) */}
           <div>
-            <label style={labelStyle}>Location</label>
-            <input name="location" type="text" required placeholder="Club Javea"
-              style={inputStyle} onFocus={focusOn} onBlur={focusOff} />
+            <label style={labelStyle}>Venue</label>
+            <input type="hidden" name="location_id" value={locationId} />
+            <input type="hidden" name="location" value={location} />
+            {savedLocs.length > 0 ? (
+              <>
+                <select
+                  required
+                  value={locationId}
+                  onChange={e => {
+                    const sel = savedLocs.find(l => l.id === e.target.value)
+                    if (sel) { setLocation(sel.name); setLocationId(sel.id) }
+                    else { setLocation(''); setLocationId('') }
+                  }}
+                  style={{ ...inputStyle, color: locationId ? '#fff' : 'rgba(255,255,255,0.55)' }}
+                  onFocus={focusOn} onBlur={focusOff}>
+                  <option value="">Select a venue…</option>
+                  {savedLocs.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+                </select>
+                <p className="text-xs text-white/35 mt-1.5">Sign-up deadline is set by the venue's booking rules.</p>
+              </>
+            ) : (
+              <div className="rounded-xl px-4 py-3" style={{ background: 'rgba(245,166,35,0.08)', border: '0.5px solid rgba(245,166,35,0.25)' }}>
+                <p className="text-sm" style={{ color: 'rgba(245,166,35,0.80)' }}>
+                  No venues configured. Add a venue in the <a href="/admin" style={{ textDecoration: 'underline' }}>admin panel</a> before creating an event.
+                </p>
+              </div>
+            )}
           </div>
 
           {/* Court count + Court numbers */}
@@ -246,9 +279,9 @@ export default function CreateEventPage() {
             </div>
           )}
 
-          <button type="submit" disabled={bezig}
+          <button type="submit" disabled={bezig || savedLocs.length === 0}
             className="w-full py-2.5 rounded-xl text-sm font-semibold transition-all"
-            style={{ background: bezig ? 'rgba(245,166,35,0.5)' : '#f5a623', color: '#0a2a3d', cursor: bezig ? 'not-allowed' : 'pointer' }}>
+            style={{ background: (bezig || savedLocs.length === 0) ? 'rgba(245,166,35,0.5)' : '#f5a623', color: '#0a2a3d', cursor: (bezig || savedLocs.length === 0) ? 'not-allowed' : 'pointer' }}>
             {bezig ? 'Creating…' : 'Create event'}
           </button>
         </form>
