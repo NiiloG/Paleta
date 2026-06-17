@@ -6,12 +6,13 @@ export const revalidate = 0
 
 function formatEventDate(iso: string) {
   const d = new Date(iso)
+  const tz = { timeZone: 'Europe/Madrid' }
   return {
-    weekday: d.toLocaleDateString('en-GB', { weekday: 'short' }).toUpperCase(),
-    day:     d.getDate(),
-    month:   d.toLocaleDateString('en-GB', { month: 'short' }),
-    time:    d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }),
-    full:    d.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }),
+    weekday: d.toLocaleDateString('en-GB', { weekday: 'short', ...tz }).toUpperCase(),
+    day:     parseInt(d.toLocaleDateString('en-GB', { day: 'numeric', ...tz }), 10),
+    month:   d.toLocaleDateString('en-GB', { month: 'short', ...tz }),
+    time:    d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', ...tz }),
+    full:    d.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric', ...tz }),
   }
 }
 
@@ -57,10 +58,13 @@ export default async function EventsPage() {
 
   const { data: rawEvents } = await supabase
     .from('events')
-    .select('*, event_signups(id, player_id, status)')
+    .select('*, event_signups(id, player_id, status), location_data:locations(booking_deadline_hours)')
     .order('datetime', { ascending: true })
 
-  type RawEvent = Event & { event_signups: { id: string; player_id: string; status: string }[] }
+  type RawEvent = Event & {
+    event_signups: { id: string; player_id: string; status: string }[]
+    location_data: { booking_deadline_hours: number | null } | null
+  }
   const events = (rawEvents ?? []) as unknown as RawEvent[]
 
   const upcoming = events.filter(e => !e.is_finalized)
@@ -72,7 +76,8 @@ export default async function EventsPage() {
     const waitlisted = event.event_signups.filter(s => s.status === 'waitlisted')
     const maxPlayers = event.court_count * 4
     const isFull = confirmed.length >= maxPlayers
-    const signupClosed = Date.now() >= new Date(event.datetime).getTime() - 2 * 60 * 60 * 1000
+    const cutoffHours  = event.location_data?.booking_deadline_hours ?? 2
+    const signupClosed = Date.now() >= new Date(event.datetime).getTime() - cutoffHours * 60 * 60 * 1000
     const mySignup = currentProfile
       ? event.event_signups.find(s => s.player_id === currentProfile!.id)
       : null

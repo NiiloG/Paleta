@@ -11,6 +11,7 @@ type FullEvent = Event & {
   event_matches: (EventMatch & {
     a1p: Profiel | null; a2p: Profiel | null; b1p: Profiel | null; b2p: Profiel | null
   })[]
+  location_data: { booking_deadline_hours: number | null } | null
 }
 
 export default async function EventAdminPage({ params }: { params: Promise<{ id: string }> }) {
@@ -33,7 +34,8 @@ export default async function EventAdminPage({ params }: { params: Promise<{ id:
         a2p:player_a2(id,naam,elo_rating,player_number),
         b1p:player_b1(id,naam,elo_rating,player_number),
         b2p:player_b2(id,naam,elo_rating,player_number)
-      )
+      ),
+      location_data:locations(booking_deadline_hours)
     `)
     .eq('id', id)
     .single()

@@ -103,3 +103,27 @@ export async function removeUserAsAdmin(userId: string) {
   revalidatePath('/spelers')
   return {}
 }
+
+export async function resendConfirmationEmail(userId: string) {
+  if (!await requireAdmin()) return { fout: 'Admin only.' }
+  const service = createServiceClient()
+
+  const { data: authUser, error: authError } = await service.auth.admin.getUserById(userId)
+  if (authError || !authUser?.user) return { fout: 'User not found.' }
+
+  const email = authUser.user.email
+  if (!email) return { fout: 'User has no email.' }
+
+  const { data: linkData, error: linkError } = await service.auth.admin.generateLink({
+    type: 'magiclink',
+    email,
+  })
+  if (linkError || !linkData?.properties?.action_link) {
+    return { fout: linkError?.message ?? 'Could not generate confirmation link.' }
+  }
+
+  const { sendConfirmationEmail } = await import('@/lib/email')
+  await sendConfirmationEmail({ to: email, confirmationUrl: linkData.properties.action_link })
+
+  return {}
+}

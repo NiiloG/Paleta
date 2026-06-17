@@ -8,7 +8,7 @@ import MatchesToggle from './MatchesToggle'
 import {
   createLocation, updateLocation, deleteLocation,
   createCost, deleteCost,
-  setUserAdmin, removeUserAsAdmin,
+  setUserAdmin, removeUserAsAdmin, resendConfirmationEmail,
 } from '@/app/actions/admin'
 
 type Tab = 'overview' | 'events' | 'locations' | 'users' | 'financials' | 'settings'
@@ -130,6 +130,8 @@ export default function AdminTabs({ overviewStats, events, locations: initLocati
   const [userSearch, setUserSearch] = useState('')
   const [userFilter, setUserFilter] = useState<'all' | 'admins' | 'unconfirmed'>('all')
   const [userBusy, setUserBusy]     = useState<string | null>(null)
+  const [resendBusy, setResendBusy] = useState<string | null>(null)
+  const [resendDone, setResendDone] = useState<Set<string>>(new Set())
 
   const { totalSpent, monthlyOngoing } = calcCostTotals(costs)
 
@@ -235,6 +237,14 @@ export default function AdminTabs({ overviewStats, events, locations: initLocati
     setUserBusy(userId)
     await removeUserAsAdmin(userId)
     window.location.reload()
+  }
+
+  async function handleResendConfirmation(userId: string) {
+    setResendBusy(userId)
+    const res = await resendConfirmationEmail(userId)
+    setResendBusy(null)
+    if (res.fout) { alert(res.fout); return }
+    setResendDone(prev => new Set([...prev, userId]))
   }
 
   // ── Filtered users ───────────────────────────────────────────────────────
@@ -537,6 +547,19 @@ export default function AdminTabs({ overviewStats, events, locations: initLocati
                     </td>
                     <td className="px-4 py-3 text-right">
                       <div className="flex items-center justify-end gap-3">
+                        {!u.email_confirmed && (
+                          <button
+                            disabled={!!resendBusy || resendDone.has(u.id)}
+                            onClick={() => handleResendConfirmation(u.id)}
+                            className="text-xs font-medium transition-colors hover:opacity-80 whitespace-nowrap"
+                            style={{
+                              color: resendDone.has(u.id) ? 'rgba(111,207,151,0.70)' : 'rgba(245,166,35,0.70)',
+                              cursor: (resendBusy || resendDone.has(u.id)) ? 'not-allowed' : 'pointer',
+                              background: 'none', border: 'none',
+                            }}>
+                            {resendBusy === u.id ? '…' : resendDone.has(u.id) ? 'Sent ✓' : 'Resend'}
+                          </button>
+                        )}
                         <button disabled={!!userBusy} onClick={() => handleToggleAdmin(u.id, u.is_admin)}
                           className="text-xs font-medium transition-colors hover:opacity-80 whitespace-nowrap"
                           style={{ color: u.is_admin ? 'rgba(255,255,255,0.35)' : 'rgba(245,166,35,0.70)', cursor: userBusy ? 'not-allowed' : 'pointer', background: 'none', border: 'none' }}>

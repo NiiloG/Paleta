@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import { Inter, Playfair_Display } from 'next/font/google'
 import './globals.css'
+import Link from 'next/link'
 import Navbar from '@/components/Navbar'
 import WelcomePopup from '@/components/WelcomePopup'
 import { HcProvider } from '@/lib/hc-context'
@@ -69,8 +70,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <Navbar />
           <main className="flex-1 pt-16 lg:pt-24 hc-zone">{children}</main>
           <footer className="border-t border-white/10 py-6 text-center text-white/25 text-xs tracking-widest uppercase">
-            © {new Date().getFullYear()} paleta · Costa Blanca
-            <span className="ml-3" style={{ color: 'rgba(245,166,35,0.30)', letterSpacing: '0.10em' }}>beta v4.000</span>
+            © {new Date().getFullYear()} paleta
+            <span className="ml-3" style={{ color: 'rgba(245,166,35,0.30)', letterSpacing: '0.10em' }}>beta v5.000</span>
+            <span className="mx-2" style={{ color: 'rgba(255,255,255,0.10)' }}>·</span>
+            <Link href="/info" className="hover:text-white/50 transition-colors">Built by Niels Groenewegen</Link>
           </footer>
           <WelcomePopup />
         </HcProvider>

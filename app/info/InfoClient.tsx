@@ -40,7 +40,7 @@ const faqs: { q: string; a: ReactNode; warning?: boolean }[] = [
   },
   {
     q: 'When does sign-up close?',
-    a: 'Registration automatically closes 3 hours before the event for courts at "PARIS 24," and 25 hours beforehand for "GYRO." Once closed, the organiser will generate the first round based on the ELO rating system.',
+    a: 'Registration closes a set number of hours before the event — the exact deadline depends on the venue and is shown on the event page. Once closed, the organiser will generate the first round based on the ELO rating system.',
   },
   {
     q: 'How does scoring work during the event?',

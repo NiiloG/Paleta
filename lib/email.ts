@@ -463,9 +463,13 @@ function buildDrawNotificationHtml(p: DrawNotificationParams & { date: string; t
  * Paste the return value of this function into:
  * Supabase Dashboard → Authentication → Email Templates → Confirm signup → Message (HTML)
  *
- * {{ .ConfirmationURL }} is automatically replaced by Supabase with the real link.
+ * {{ .ConfirmationURL }} and {{ .Email }} are automatically replaced by Supabase.
  */
 export function buildSignupConfirmationTemplate(): string {
+  return buildConfirmationHtml('{{ .ConfirmationURL }}', '{{ .Email }}')
+}
+
+function buildConfirmationHtml(confirmationUrl: string, email: string): string {
   return `<!DOCTYPE html>
 <html lang="en">
 <body style="margin:0;padding:0;background:#061420;font-family:system-ui,sans-serif;color:#fff">
@@ -492,27 +496,35 @@ export function buildSignupConfirmationTemplate(): string {
 
         <!-- Body -->
         <tr><td style="padding:28px 32px 0">
-          <h1 style="margin:0 0 16px;font-size:22px;font-weight:700;color:#fff">Confirm your account</h1>
+          <h1 style="margin:0 0 16px;font-size:22px;font-weight:700;color:#fff">Welcome to paleta!</h1>
+          <p style="margin:0 0 16px;font-size:15px;line-height:1.6;color:rgba(255,255,255,.70)">
+            We&apos;re glad you&apos;re here, <span style="color:#f5a623">${email}</span>.
+          </p>
           <p style="margin:0 0 24px;font-size:15px;line-height:1.6;color:rgba(255,255,255,.70)">
-            Welcome to paleta &mdash; click the button below to verify your email address and activate your account.
+            You&apos;re one step away from joining the paleta community. Click the button below to confirm your email address and activate your account &mdash; then you can sign up for events, track your ranking, and get on court.
           </p>
         </td></tr>
 
         <!-- CTA button -->
         <tr><td style="padding:0 32px 28px">
-          <a href="{{ .ConfirmationURL }}"
+          <a href="${confirmationUrl}"
             style="display:inline-block;background:#f5a623;color:#0a2a3d;font-size:15px;font-weight:700;text-decoration:none;padding:14px 32px;border-radius:10px;letter-spacing:0.01em;">
-            Confirm email
+            Confirm my email
           </a>
         </td></tr>
 
-        <!-- Fallback link + footer -->
+        <!-- Fallback link + expiry + footer -->
         <tr><td style="padding:0 32px 32px">
-          <p style="margin:0 0 12px;font-size:13px;color:rgba(255,255,255,.45);line-height:1.6">
-            Or copy and paste this link into your browser:<br>
-            <span style="color:rgba(245,166,35,.70);word-break:break-all;font-size:12px;">{{ .ConfirmationURL }}</span>
+          <p style="margin:0 0 8px;font-size:13px;color:rgba(255,255,255,.45);line-height:1.6">
+            If the button doesn&apos;t work, copy and paste the following link into your browser:
           </p>
-          <p style="margin:0;padding-top:16px;border-top:1px solid rgba(255,255,255,.10);font-size:11px;color:rgba(255,255,255,.30)">
+          <p style="margin:0 0 16px;word-break:break-all;font-size:12px;color:rgba(245,166,35,.70)">
+            ${confirmationUrl}
+          </p>
+          <p style="margin:0 0 0;font-size:12px;color:rgba(255,255,255,.30);line-height:1.6">
+            This link expires in <strong style="color:rgba(255,255,255,.45)">24 hours</strong>. After that you&apos;ll need to register again.
+          </p>
+          <p style="margin:16px 0 0;padding-top:16px;border-top:1px solid rgba(255,255,255,.10);font-size:11px;color:rgba(255,255,255,.30)">
             If you didn&apos;t create a paleta account you can safely ignore this email.
           </p>
         </td></tr>
@@ -522,4 +534,37 @@ export function buildSignupConfirmationTemplate(): string {
   </table>
 </body>
 </html>`
+}
+
+interface ConfirmationEmailParams {
+  to: string
+  confirmationUrl: string
+}
+
+export async function sendConfirmationEmail(p: ConfirmationEmailParams) {
+  const key = process.env.RESEND_API_KEY
+  if (!key) {
+    console.warn('[email] RESEND_API_KEY not set — skipping confirmation email to', p.to)
+    return
+  }
+  try {
+    const res = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        from: FROM,
+        to: [p.to],
+        subject: 'Confirm your paleta account',
+        html: buildConfirmationHtml(p.confirmationUrl, p.to),
+      }),
+    })
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}))
+      console.error('[email] Resend error', res.status, JSON.stringify(body), '→', p.to)
+    } else {
+      console.log('[email] Sent confirmation email to', p.to)
+    }
+  } catch (err) {
+    console.error('[email] fetch failed:', err)
+  }
 }

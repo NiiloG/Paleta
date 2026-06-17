@@ -20,6 +20,7 @@ interface Props {
     event_matches: (EventMatch & {
       a1p: Profiel | null; a2p: Profiel | null; b1p: Profiel | null; b2p: Profiel | null
     })[]
+    location_data: { booking_deadline_hours: number | null } | null
   }
 }
 
@@ -333,17 +334,18 @@ function CourtGroupEditor({ eventId, courtNumber, onSaved }: {
 }
 
 // ── Round card — inline players + score, no individual save ──────────────
-function RoundCard({ match, playerOptions, score, assignment, onScore, onAssign }: {
+function RoundCard({ match, playerOptions, score, assignment, onScore, onAssign, editMode }: {
   match: Props['event']['event_matches'][0]
   playerOptions: PlayerOption[]
   score: { a: string; b: string }
   assignment: { a1: string; a2: string; b1: string; b2: string }
   onScore: (a: string, b: string) => void
   onAssign: (field: 'a1' | 'a2' | 'b1' | 'b2', val: string) => void
+  editMode?: boolean
 }) {
   const assigned = match.player_a1 !== null
   const [editingPlayers, setEditingPlayers] = useState(false)
-  const showDropdowns = !assigned || editingPlayers
+  const showDropdowns = !assigned || editingPlayers || !!editMode
 
   const Sel = ({ field, val }: { field: 'a1' | 'a2' | 'b1' | 'b2'; val: string }) => (
     <select value={val} onChange={e => onAssign(field, e.target.value)} style={selectStyle}
@@ -564,8 +566,9 @@ export default function ScoreEntry({ event: initialEvent }: Props) {
     })
     return a
   })
-  const [saveBezig, setSaveBezig]   = useState(false)
-  const [saveMsg, setSaveMsg]       = useState<{ ok: boolean; text: string } | null>(null)
+  const [saveBezig, setSaveBezig]       = useState(false)
+  const [saveMsg, setSaveMsg]           = useState<{ ok: boolean; text: string } | null>(null)
+  const [editingAllPlayers, setEditingAllPlayers] = useState(false)
 
   async function handleSaveAll() {
     setSaveBezig(true); setSaveMsg(null)
@@ -611,7 +614,8 @@ export default function ScoreEntry({ event: initialEvent }: Props) {
   const maxPlayers   = event.court_count * 4
   const confirmed    = event.event_signups.filter(s => s.status === 'confirmed')
   const waitlisted   = event.event_signups.filter(s => s.status === 'waitlisted')
-  const signupClosed = Date.now() >= new Date(event.datetime).getTime() - 2 * 60 * 60 * 1000
+  const cutoffHours  = event.location_data?.booking_deadline_hours ?? 2
+  const signupClosed = Date.now() >= new Date(event.datetime).getTime() - cutoffHours * 60 * 60 * 1000
   const readyForDraw = signupClosed && confirmed.length >= 4 && !event.is_finalized
 
   const courts: Record<number, typeof event.event_matches> = {}
@@ -923,7 +927,7 @@ export default function ScoreEntry({ event: initialEvent }: Props) {
         {/* Info text */}
         {!signupClosed && !event.is_finalized && (
           <p className="text-xs text-white/35 mt-2">
-            Sign-up closes 2 hours before the event.
+            Sign-up closes {cutoffHours} hour{cutoffHours !== 1 ? 's' : ''} before the event.
             {confirmed.length < maxPlayers && ` Waiting for ${maxPlayers - confirmed.length} more player${maxPlayers - confirmed.length !== 1 ? 's' : ''}.`}
           </p>
         )}
@@ -992,11 +996,27 @@ export default function ScoreEntry({ event: initialEvent }: Props) {
                 assignment={assignments[m.id] ?? { a1: '', a2: '', b1: '', b2: '' }}
                 onScore={(a, b) => setScores(s => ({ ...s, [m.id]: { a, b } }))}
                 onAssign={(field, val) => setAssignments(s => ({ ...s, [m.id]: { ...s[m.id], [field]: val } }))}
+                editMode={editingAllPlayers}
               />
             ))}
           </div>
         </div>
       ))}
+
+      {/* Edit players toggle */}
+      {courtNumbers.length > 0 && !event.is_finalized && (
+        <div className="flex justify-end">
+          <button
+            onClick={() => setEditingAllPlayers(e => !e)}
+            className="text-xs font-medium transition-colors hover:opacity-80"
+            style={{
+              color: editingAllPlayers ? 'rgba(245,166,35,0.90)' : 'rgba(255,255,255,0.30)',
+              background: 'none', border: 'none', cursor: 'pointer', padding: 0,
+            }}>
+            {editingAllPlayers ? 'Done editing players' : 'Edit players'}
+          </button>
+        </div>
+      )}
 
       {/* Save all */}
       {courtNumbers.length > 0 && !event.is_finalized && (

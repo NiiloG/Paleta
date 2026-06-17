@@ -6,7 +6,6 @@ import { generateRoundDraw, calculateEloDeltas } from '@/lib/americano'
 import { sendWaitlistPromotionEmail, sendDemotedToWaitlistEmail, sendLateCancellationEmail, sendDrawNotificationEmail } from '@/lib/email'
 
 const ROUNDS_PER_EVENT = 3
-const SIGNUP_CUTOFF_MS = 2 * 60 * 60 * 1000 // 2 hours
 
 // ── Delete event (admin only) ─────────────────────────────────────────────
 export async function deleteEvent(eventId: string) {
