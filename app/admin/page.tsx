@@ -58,6 +58,8 @@ export default async function AdminPage() {
     is_admin:        p.is_admin,
     email_confirmed: !!authMap[p.id]?.email_confirmed_at,
     aangemaakt_op:   p.aangemaakt_op,
+    avatar_url:      p.avatar_url ?? null,
+    elo_rating:      p.elo_rating,
   }))
 
   // Settings

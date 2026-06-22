@@ -42,6 +42,8 @@ export interface AdminUserRow {
   is_admin: boolean
   email_confirmed: boolean
   aangemaakt_op: string
+  avatar_url: string | null
+  elo_rating: number
 }
 
 // ── App ───────────────────────────────────────────────────────────────────
@@ -63,6 +65,7 @@ export interface Profiel {
   email_notifications: boolean
   blur_name: boolean
   blur_number: boolean
+  avatar_url: string | null
 }
 
 export interface Event {

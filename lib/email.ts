@@ -30,8 +30,8 @@ export async function sendLateCancellationEmail(p: LateCancellationParams) {
   }
 
   const d    = new Date(p.eventDatetime)
-  const date = d.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
-  const time = d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+  const date = d.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Europe/Madrid' })
+  const time = d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Madrid' })
 
   try {
     const res = await fetch('https://api.resend.com/emails', {
@@ -127,8 +127,8 @@ export async function sendDemotedToWaitlistEmail(p: PromotionParams) {
   }
 
   const d    = new Date(p.eventDatetime)
-  const date = d.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
-  const time = d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+  const date = d.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Europe/Madrid' })
+  const time = d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Madrid' })
 
   try {
     const res = await fetch('https://api.resend.com/emails', {
@@ -161,8 +161,8 @@ export async function sendWaitlistPromotionEmail(p: PromotionParams) {
   }
 
   const d    = new Date(p.eventDatetime)
-  const date = d.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
-  const time = d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+  const date = d.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Europe/Madrid' })
+  const time = d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Madrid' })
 
   try {
     const res = await fetch('https://api.resend.com/emails', {
@@ -322,8 +322,8 @@ export async function sendDrawNotificationEmail(p: DrawNotificationParams) {
     return
   }
   const d    = new Date(p.eventDatetime)
-  const date = d.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
-  const time = d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+  const date = d.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Europe/Madrid' })
+  const time = d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Madrid' })
   try {
     const res = await fetch('https://api.resend.com/emails', {
       method: 'POST',
@@ -501,7 +501,7 @@ function buildConfirmationHtml(confirmationUrl: string, email: string): string {
             We&apos;re glad you&apos;re here, <span style="color:#f5a623">${email}</span>.
           </p>
           <p style="margin:0 0 24px;font-size:15px;line-height:1.6;color:rgba(255,255,255,.70)">
-            You&apos;re one step away from joining the paleta community. Click the button below to confirm your email address and activate your account &mdash; then you can sign up for events, track your ranking, and get on court.
+            You&apos;re one step away from joining the paleta community.<br><br>Click the button below to confirm your email address and activate your account &mdash; then you can sign up for events, track your ranking, and get on court.
           </p>
         </td></tr>
 

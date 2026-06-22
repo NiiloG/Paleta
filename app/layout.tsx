@@ -71,7 +71,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <main className="flex-1 pt-16 lg:pt-24 hc-zone">{children}</main>
           <footer className="border-t border-white/10 py-6 text-center text-white/25 text-xs tracking-widest uppercase">
             © {new Date().getFullYear()} paleta
-            <span className="ml-3" style={{ color: 'rgba(245,166,35,0.30)', letterSpacing: '0.10em' }}>beta v5.000</span>
+            <span className="ml-3" style={{ color: 'rgba(245,166,35,0.30)', letterSpacing: '0.10em' }}>beta v6.000</span>
             <span className="mx-2" style={{ color: 'rgba(255,255,255,0.10)' }}>·</span>
             <Link href="/info" className="hover:text-white/50 transition-colors">Built by Niels Groenewegen</Link>
           </footer>

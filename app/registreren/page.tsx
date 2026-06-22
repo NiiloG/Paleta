@@ -53,6 +53,8 @@ export default function RegistrerenPagina() {
   const [bezig, setBezig]             = useState(false)
   const [bevestigingNodig, setBevestigingNodig] = useState(false)
   const [niveau, setNiveau]           = useState<LevelId>('intermediate')
+  const [countryCode, setCountryCode] = useState('+34')
+  const [customCode, setCustomCode]   = useState('')
 
   const selectedLevel = LEVELS.find(l => l.id === niveau)!
 
@@ -62,15 +64,19 @@ export default function RegistrerenPagina() {
     setBezig(true)
 
     const formData   = new FormData(e.currentTarget)
-    const cap        = (s: string) => s ? s.charAt(0).toUpperCase() + s.slice(1) : s
+    const cap        = (s: string) => s.replace(/\b\w/g, c => c.toUpperCase())
     const voornaam   = cap((formData.get('voornaam')   as string).trim())
     const achternaam = cap((formData.get('achternaam') as string).trim())
     const naam       = `${voornaam} ${achternaam}`
     const email      = formData.get('email')      as string
     const wachtwoord = formData.get('wachtwoord') as string
-    const telefoon   = (formData.get('telefoon')  as string | null)?.trim() || undefined
+    const rawPhone   = (formData.get('telefoon') as string | null)?.trim() || ''
+    const localPhone = rawPhone.replace(/^0+/, '')
+    const activeCode = countryCode === 'other' ? customCode.trim() : countryCode
+    const telefoon   = localPhone && activeCode ? `${activeCode}${localPhone}` : undefined
 
     if (!voornaam || !achternaam) { setFout('Please enter both first and last name.'); setBezig(false); return }
+    if (voornaam.length < 2 || achternaam.length < 2) { setFout('Please enter your full first and last name.'); setBezig(false); return }
     if (wachtwoord.length < 8) { setFout('Password must be at least 8 characters.'); setBezig(false); return }
 
     const { data, error } = await supabase.auth.signUp({
@@ -174,6 +180,10 @@ export default function RegistrerenPagina() {
               ))}
             </div>
 
+            <p className="text-[11px] leading-relaxed -mt-1" style={{ color: 'rgba(255,255,255,0.28)' }}>
+              You can hide your name on the leaderboards in your profile settings after signing up.
+            </p>
+
             {/* Email + password */}
             {[
               { id: 'email',      label: 'Email',    type: 'email',    placeholder: 'you@example.com', autoComplete: 'email' },
@@ -203,14 +213,54 @@ export default function RegistrerenPagina() {
                 style={{ color: 'rgba(255,255,255,0.5)' }}>
                 Phone number <span style={{ color: 'rgba(255,255,255,0.25)', textTransform: 'none', letterSpacing: 0 }}>(optional)</span>
               </label>
-              <input
-                id="telefoon" name="telefoon" type="tel"
-                autoComplete="tel" placeholder="+34 600 000 000"
-                className="w-full px-4 py-3 text-sm text-white placeholder-white/25 rounded-xl outline-none transition-all"
-                style={inputStyle}
-                onFocus={e => { e.currentTarget.style.border = '0.5px solid rgba(245,166,35,0.7)'; e.currentTarget.style.boxShadow = '0 0 0 3px rgba(245,166,35,0.10)' }}
-                onBlur={e  => { e.currentTarget.style.border = '0.5px solid rgba(255,255,255,0.18)'; e.currentTarget.style.boxShadow = 'none' }}
-              />
+              <div className="flex gap-2 min-w-0">
+                <div className="flex gap-1 flex-shrink-0">
+                <select
+                  value={countryCode}
+                  onChange={e => setCountryCode(e.target.value)}
+                  className="px-2 py-3 text-sm text-white rounded-xl outline-none transition-all flex-shrink-0"
+                  style={{ ...inputStyle, width: '90px' }}
+                  onFocus={e => { e.currentTarget.style.border = '0.5px solid rgba(245,166,35,0.7)'; e.currentTarget.style.boxShadow = '0 0 0 3px rgba(245,166,35,0.10)' }}
+                  onBlur={e  => { e.currentTarget.style.border = '0.5px solid rgba(255,255,255,0.18)'; e.currentTarget.style.boxShadow = 'none' }}
+                >
+                  {[
+                    { code: '+34',   label: '🇪🇸 +34'  },
+                    { code: '+31',   label: '🇳🇱 +31'  },
+                    { code: '+44',   label: '🇬🇧 +44'  },
+                    { code: '+49',   label: '🇩🇪 +49'  },
+                    { code: '+32',   label: '🇧🇪 +32'  },
+                    { code: '+33',   label: '🇫🇷 +33'  },
+                    { code: '+39',   label: '🇮🇹 +39'  },
+                    { code: '+351',  label: '🇵🇹 +351' },
+                    { code: '+46',   label: '🇸🇪 +46'  },
+                    { code: '+47',   label: '🇳🇴 +47'  },
+                    { code: '+45',   label: '🇩🇰 +45'  },
+                    { code: '+1',    label: '🇺🇸 +1'   },
+                    { code: 'other', label: 'Other'     },
+                  ].map(c => (
+                    <option key={c.code} value={c.code} style={{ background: '#0a1828' }}>{c.label}</option>
+                  ))}
+                </select>
+                {countryCode === 'other' && (
+                  <input
+                    type="text" placeholder="+00" value={customCode}
+                    onChange={e => setCustomCode(e.target.value)}
+                    className="px-2 py-3 text-sm text-white placeholder-white/25 rounded-xl outline-none transition-all"
+                    style={{ ...inputStyle, width: '58px' }}
+                    onFocus={e => { e.currentTarget.style.border = '0.5px solid rgba(245,166,35,0.7)'; e.currentTarget.style.boxShadow = '0 0 0 3px rgba(245,166,35,0.10)' }}
+                    onBlur={e  => { e.currentTarget.style.border = '0.5px solid rgba(255,255,255,0.18)'; e.currentTarget.style.boxShadow = 'none' }}
+                  />
+                )}
+                </div>
+                <input
+                  id="telefoon" name="telefoon" type="tel"
+                  autoComplete="tel-national" placeholder="600 000 000"
+                  className="flex-1 min-w-0 px-4 py-3 text-sm text-white placeholder-white/25 rounded-xl outline-none transition-all"
+                  style={inputStyle}
+                  onFocus={e => { e.currentTarget.style.border = '0.5px solid rgba(245,166,35,0.7)'; e.currentTarget.style.boxShadow = '0 0 0 3px rgba(245,166,35,0.10)' }}
+                  onBlur={e  => { e.currentTarget.style.border = '0.5px solid rgba(255,255,255,0.18)'; e.currentTarget.style.boxShadow = 'none' }}
+                />
+              </div>
               <p className="mt-1.5 text-[11px] leading-relaxed" style={{ color: 'rgba(255,255,255,0.28)' }}>
                 Used by organisers to reach you if there&apos;s an issue with your registration.
               </p>

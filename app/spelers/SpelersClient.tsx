@@ -29,15 +29,116 @@ function TrophyIcon({ size = 13, style }: { size?: number; style?: React.CSSProp
 }
 
 export default function SpelersClient({ ranglijst }: { ranglijst: Profiel[] }) {
-  const [filter, setFilter] = useState<Filter>('all')
+  const [filter, setFilter]                 = useState<Filter>('all')
+  const [selectedPlayer, setSelectedPlayer] = useState<Profiel | null>(null)
+  const [zoomAvatar, setZoomAvatar]         = useState(false)
 
   const activeTier = TIERS.find(t => t.id === filter)!
   const filtered = filter === 'all'
     ? ranglijst
     : ranglijst.filter(p => p.elo_rating >= activeTier.minElo && p.elo_rating <= activeTier.maxElo)
 
+  const selectedRank = selectedPlayer ? ranglijst.findIndex(p => p.id === selectedPlayer.id) + 1 : 0
+
   return (
     <>
+      {/* ── Public player profile modal ── */}
+      {selectedPlayer && (() => {
+        const tier      = tierCfg(selectedPlayer.elo_rating)
+        const isBlurred = selectedPlayer.blur_name
+        const winPct    = selectedPlayer.wedstrijden_gespeeld > 0
+          ? Math.round((selectedPlayer.gewonnen / selectedPlayer.wedstrijden_gespeeld) * 100)
+          : 0
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center px-4"
+            onClick={() => { setSelectedPlayer(null); setZoomAvatar(false) }}>
+            <div className="absolute inset-0" style={{ background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(4px)' }} />
+            <div className="relative w-full max-w-sm rounded-2xl p-6 space-y-5"
+              style={{ background: '#0a1828', border: '1px solid rgba(255,255,255,0.14)' }}
+              onClick={e => e.stopPropagation()}>
+
+              <button onClick={() => setSelectedPlayer(null)}
+                className="absolute top-4 right-4 text-white/30 hover:text-white/70 transition-colors text-xl leading-none"
+                style={{ background: 'none', border: 'none', cursor: 'pointer' }}>×</button>
+
+              {/* Avatar */}
+              <div className="flex flex-col items-center gap-3 pt-2">
+                {selectedPlayer.avatar_url ? (
+                  <img
+                    src={selectedPlayer.avatar_url}
+                    alt={isBlurred ? '' : selectedPlayer.naam}
+                    onClick={() => !isBlurred && setZoomAvatar(true)}
+                    className="w-20 h-20 rounded-full object-cover"
+                    style={{
+                      border: '2px solid rgba(245,166,35,0.35)',
+                      filter: isBlurred ? 'blur(10px)' : undefined,
+                      cursor: isBlurred ? 'default' : 'zoom-in',
+                    }}
+                  />
+                ) : (
+                  <div className="w-20 h-20 rounded-full flex items-center justify-center text-2xl font-bold"
+                    style={{ background: 'rgba(245,166,35,0.12)', border: '2px solid rgba(245,166,35,0.25)', color: '#f5a623',
+                      filter: isBlurred ? 'blur(6px)' : undefined }}>
+                    {isBlurred ? '?' : selectedPlayer.naam.charAt(0).toUpperCase()}
+                  </div>
+                )}
+
+                <div className="text-center">
+                  <p className="text-white font-semibold text-lg leading-tight"
+                    style={isBlurred ? { filter: 'blur(8px)', userSelect: 'none' } : undefined}>
+                    {selectedPlayer.naam}
+                  </p>
+                  {selectedPlayer.player_number != null && !selectedPlayer.blur_number && (
+                    <p className="text-xs font-mono mt-1" style={{ color: 'rgba(245,166,35,0.65)' }}>
+                      #{selectedPlayer.player_number}
+                    </p>
+                  )}
+                  <span className="inline-block mt-2 px-3 py-0.5 text-[11px] font-medium rounded-full"
+                    style={{ background: tier.bg, border: `0.5px solid ${tier.border}`, color: tier.color }}>
+                    {tier.label}
+                  </span>
+                </div>
+              </div>
+
+              {/* Stats grid */}
+              <div className="grid grid-cols-2 gap-3 pt-3" style={{ borderTop: '0.5px solid rgba(255,255,255,0.10)' }}>
+                {[
+                  { label: 'Rank',   value: `#${selectedRank}`,                          color: undefined },
+                  { label: 'Rating', value: eloToPlaytomic(selectedPlayer.elo_rating),   color: tier.color },
+                  { label: 'Played', value: String(selectedPlayer.wedstrijden_gespeeld), color: undefined },
+                  { label: 'Win %',  value: `${winPct}%`,                                color: undefined },
+                  { label: 'Won',    value: String(selectedPlayer.gewonnen),              color: '#6fcf97' },
+                  { label: 'Lost',   value: String(selectedPlayer.verloren),              color: '#e87a7a' },
+                ].map(stat => (
+                  <div key={stat.label} className="p-3 rounded-xl text-center"
+                    style={{ background: 'rgba(255,255,255,0.04)', border: '0.5px solid rgba(255,255,255,0.08)' }}>
+                    <p className="text-[10px] font-semibold uppercase tracking-widest text-white/30 mb-1">{stat.label}</p>
+                    <p className="text-lg font-bold tabular-nums" style={{ color: stat.color ?? tier.color }}>{stat.value}</p>
+                  </div>
+                ))}
+              </div>
+
+              {isBlurred && (
+                <p className="text-center text-xs text-white/25 pt-1">This player has chosen to keep their identity private.</p>
+              )}
+            </div>
+          </div>
+        )
+      })()}
+
+      {/* ── Avatar zoom overlay ── */}
+      {zoomAvatar && selectedPlayer?.avatar_url && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center"
+          onClick={() => setZoomAvatar(false)}
+          style={{ background: 'rgba(0,0,0,0.92)', cursor: 'zoom-out' }}>
+          <img
+            src={selectedPlayer.avatar_url}
+            alt={selectedPlayer.naam}
+            style={{ maxHeight: '90vh', maxWidth: '90vw', borderRadius: '14px', boxShadow: '0 0 60px rgba(0,0,0,0.6)' }}
+          />
+        </div>
+      )}
+
       {/* Tier filter bar */}
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 mb-8">
         {TIERS.map(t => {
@@ -94,7 +195,8 @@ export default function SpelersClient({ ranglijst }: { ranglijst: Profiel[] }) {
                 return (
                   <tr
                     key={speler.id}
-                    className="hover:bg-white/[0.04] transition-colors"
+                    className="hover:bg-white/[0.04] transition-colors cursor-pointer"
+                    onClick={() => setSelectedPlayer(speler)}
                     style={{
                       background: i === 0 ? 'rgba(245,166,35,0.06)' : undefined,
                       borderBottom: '0.5px solid rgba(255,255,255,0.08)',
@@ -119,16 +221,33 @@ export default function SpelersClient({ ranglijst }: { ranglijst: Profiel[] }) {
                       )}
                     </td>
                     <td className="px-5 py-4">
-                      <p className="text-white font-medium text-sm"
-                        style={speler.blur_name ? { filter: 'blur(6px)', userSelect: 'none' } : undefined}>
-                        {speler.naam}
-                      </p>
-                      <span
-                        className="inline-block mt-0.5 px-2 py-0.5 text-[10px] font-medium rounded-full"
-                        style={{ background: tier.bg, border: `0.5px solid ${tier.border}`, color: tier.color }}
-                      >
-                        {tier.label}
-                      </span>
+                      <div className="flex items-center gap-3">
+                        {speler.avatar_url ? (
+                          <img src={speler.avatar_url} alt={speler.blur_name ? '' : speler.naam}
+                            className="w-8 h-8 rounded-full object-cover flex-shrink-0"
+                            style={{
+                              border: '1px solid rgba(255,255,255,0.12)',
+                              ...(speler.blur_name ? { filter: 'blur(6px)' } : {}),
+                            }} />
+                        ) : (
+                          <div className="w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center text-xs font-bold"
+                            style={{ background: 'rgba(245,166,35,0.12)', color: '#f5a623' }}>
+                            {speler.blur_name ? '?' : speler.naam.charAt(0).toUpperCase()}
+                          </div>
+                        )}
+                        <div>
+                          <p className="text-white font-medium text-sm"
+                            style={speler.blur_name ? { filter: 'blur(6px)', userSelect: 'none' } : undefined}>
+                            {speler.naam}
+                          </p>
+                          <span
+                            className="inline-block mt-0.5 px-2 py-0.5 text-[10px] font-medium rounded-full"
+                            style={{ background: tier.bg, border: `0.5px solid ${tier.border}`, color: tier.color }}
+                          >
+                            {tier.label}
+                          </span>
+                        </div>
+                      </div>
                     </td>
                     <td className="px-5 py-4 text-right">
                       <span className="text-base font-bold font-mono tabular-nums" style={{ color: tier.color }}>

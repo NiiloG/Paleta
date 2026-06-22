@@ -3,6 +3,7 @@
 import { useState, useRef } from 'react'
 import Link from 'next/link'
 import type { Event, Location, Cost, AdminUserRow } from '@/types'
+import { eloToPlaytomic, tierCfg } from '@/lib/tier'
 import EventBeheerKnop from './EventBeheerKnop'
 import MatchesToggle from './MatchesToggle'
 import {
@@ -127,11 +128,12 @@ export default function AdminTabs({ overviewStats, events, locations: initLocati
   const [costMsg, setCostMsg]       = useState<{ ok: boolean; text: string } | null>(null)
 
   // Users state
-  const [userSearch, setUserSearch] = useState('')
-  const [userFilter, setUserFilter] = useState<'all' | 'admins' | 'unconfirmed'>('all')
-  const [userBusy, setUserBusy]     = useState<string | null>(null)
-  const [resendBusy, setResendBusy] = useState<string | null>(null)
-  const [resendDone, setResendDone] = useState<Set<string>>(new Set())
+  const [userSearch, setUserSearch]       = useState('')
+  const [userFilter, setUserFilter]       = useState<'all' | 'admins' | 'unconfirmed'>('all')
+  const [userBusy, setUserBusy]           = useState<string | null>(null)
+  const [resendBusy, setResendBusy]       = useState<string | null>(null)
+  const [resendDone, setResendDone]       = useState<Set<string>>(new Set())
+  const [viewingUser, setViewingUser]     = useState<typeof users[0] | null>(null)
 
   const { totalSpent, monthlyOngoing } = calcCostTotals(costs)
 
@@ -262,6 +264,75 @@ export default function AdminTabs({ overviewStats, events, locations: initLocati
 
   return (
     <>
+      {/* ── Profile viewer modal ── */}
+      {viewingUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-4"
+          onClick={() => setViewingUser(null)}>
+          <div className="absolute inset-0" style={{ background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(4px)' }} />
+          <div className="relative w-full max-w-sm rounded-2xl p-6 space-y-5"
+            style={{ background: '#0a1828', border: '1px solid rgba(255,255,255,0.14)' }}
+            onClick={e => e.stopPropagation()}>
+
+            {/* Close */}
+            <button onClick={() => setViewingUser(null)}
+              className="absolute top-4 right-4 text-white/30 hover:text-white/70 transition-colors text-lg leading-none"
+              style={{ background: 'none', border: 'none', cursor: 'pointer' }}>×</button>
+
+            {/* Avatar + name */}
+            <div className="flex items-center gap-4">
+              {viewingUser.avatar_url ? (
+                <img src={viewingUser.avatar_url} alt={viewingUser.naam}
+                  className="w-16 h-16 rounded-full object-cover flex-shrink-0"
+                  style={{ border: '2px solid rgba(245,166,35,0.35)' }} />
+              ) : (
+                <div className="w-16 h-16 rounded-full flex-shrink-0 flex items-center justify-center text-xl font-bold"
+                  style={{ background: 'rgba(245,166,35,0.12)', border: '2px solid rgba(245,166,35,0.25)', color: '#f5a623' }}>
+                  {viewingUser.naam.charAt(0).toUpperCase()}
+                </div>
+              )}
+              <div>
+                <p className="text-white font-semibold text-base">{viewingUser.naam}</p>
+                {viewingUser.player_number != null && (
+                  <p className="text-xs font-mono mt-0.5" style={{ color: 'rgba(245,166,35,0.70)' }}>#{viewingUser.player_number}</p>
+                )}
+                <span className="text-[11px] px-2 py-0.5 rounded-full mt-1 inline-block"
+                  style={viewingUser.email_confirmed
+                    ? { background: 'rgba(76,175,80,0.12)', border: '0.5px solid rgba(76,175,80,0.28)', color: '#6fcf97' }
+                    : { background: 'rgba(232,131,74,0.12)', border: '0.5px solid rgba(232,131,74,0.28)', color: '#f0a070' }}>
+                  {viewingUser.email_confirmed ? 'Confirmed' : 'Unconfirmed'}
+                </span>
+              </div>
+            </div>
+
+            {/* Details */}
+            <div className="space-y-3 pt-3" style={{ borderTop: '0.5px solid rgba(255,255,255,0.10)' }}>
+              {[
+                { label: 'Email',   value: viewingUser.email },
+                { label: 'Phone',   value: viewingUser.phone },
+                { label: 'Rating',  value: viewingUser.elo_rating ? eloToPlaytomic(viewingUser.elo_rating) + ' · ' + tierCfg(viewingUser.elo_rating).label : null },
+                { label: 'Joined',  value: new Date(viewingUser.aangemaakt_op).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) },
+              ].map(row => (
+                <div key={row.label} className="flex justify-between items-start gap-4">
+                  <span className="text-[10px] font-semibold uppercase tracking-widest text-white/30 flex-shrink-0 pt-0.5">{row.label}</span>
+                  <span className="text-sm text-white/75 text-right break-all">{row.value ?? '—'}</span>
+                </div>
+              ))}
+              {viewingUser.phone && (
+                <div className="flex gap-3 pt-1">
+                  <a href={`tel:${viewingUser.phone}`}
+                    className="text-xs font-medium hover:opacity-80 transition-opacity"
+                    style={{ color: 'rgba(111,207,151,0.80)' }}>📞 Call</a>
+                  <a href={`https://wa.me/${viewingUser.phone.replace(/[\s\-().+]/g, '')}`}
+                    target="_blank" rel="noopener noreferrer"
+                    className="text-xs font-medium hover:opacity-80 transition-opacity"
+                    style={{ color: 'rgba(111,207,151,0.80)' }}>💬 WhatsApp</a>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Tab bar */}
       <div className="flex gap-1 mb-6 p-1 rounded-xl overflow-x-auto"
         style={{ background: 'rgba(255,255,255,0.05)', border: '0.5px solid rgba(255,255,255,0.10)' }}>
@@ -518,9 +589,13 @@ export default function AdminTabs({ overviewStats, events, locations: initLocati
                           </span>
                         )}
                         <div>
-                          <p className="text-white font-medium">{u.naam}</p>
+                          <button onClick={() => setViewingUser(u)}
+                            className="text-white font-medium hover:text-white/70 transition-colors text-left"
+                            style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
+                            {u.naam}
+                          </button>
                           {u.is_admin && (
-                            <span className="text-[10px] font-semibold" style={{ color: '#f5a623' }}>Admin</span>
+                            <span className="text-[10px] font-semibold block" style={{ color: '#f5a623' }}>Admin</span>
                           )}
                         </div>
                       </div>
@@ -528,10 +603,21 @@ export default function AdminTabs({ overviewStats, events, locations: initLocati
                     <td className="px-4 py-3 text-white/45 text-xs hidden sm:table-cell">{u.email}</td>
                     <td className="px-4 py-3 hidden sm:table-cell">
                       {u.phone ? (
-                        <a href={`tel:${u.phone}`} className="text-xs hover:opacity-80 transition-opacity"
-                          style={{ color: 'rgba(255,255,255,0.55)' }}>
-                          {u.phone}
-                        </a>
+                        <div className="flex flex-col gap-1">
+                          <span className="text-xs" style={{ color: 'rgba(255,255,255,0.55)' }}>{u.phone}</span>
+                          <div className="flex gap-2">
+                            <a href={`tel:${u.phone}`} title="Call"
+                              className="text-[10px] font-medium hover:opacity-80 transition-opacity"
+                              style={{ color: 'rgba(111,207,151,0.80)' }}>
+                              📞 Call
+                            </a>
+                            <a href={`https://wa.me/${u.phone.replace(/[\s\-().+]/g, '')}`} target="_blank" rel="noopener noreferrer" title="WhatsApp"
+                              className="text-[10px] font-medium hover:opacity-80 transition-opacity"
+                              style={{ color: 'rgba(111,207,151,0.80)' }}>
+                              💬 WhatsApp
+                            </a>
+                          </div>
+                        </div>
                       ) : (
                         <span className="text-xs text-white/20">—</span>
                       )}

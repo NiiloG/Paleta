@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import type { Profiel } from '@/types'
@@ -8,6 +8,7 @@ import { tierCfg, eloToPlaytomic } from '@/lib/tier'
 import EmailToggle from '@/components/EmailToggle'
 import BlurNameToggle from '@/components/BlurNameToggle'
 import BlurNumberToggle from '@/components/BlurNumberToggle'
+import { createClient } from '@/lib/supabase/client'
 import {
   updateProfileInfo,
   sendPasswordReset,
@@ -76,6 +77,29 @@ export default function DashboardTabs({ p, positie, totaalSpelers, winPct, histo
   // Password reset
   const [resetBusy, setResetBusy] = useState(false)
   const [resetSent, setResetSent] = useState(false)
+
+  // Avatar upload
+  const [avatarUrl,       setAvatarUrl]       = useState<string | null>(p.avatar_url ?? null)
+  const [avatarUploading, setAvatarUploading] = useState(false)
+  const [avatarMsg,       setAvatarMsg]       = useState<string | null>(null)
+  const avatarInputRef = useRef<HTMLInputElement>(null)
+
+  async function handleAvatarUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    if (!file.type.startsWith('image/')) { setAvatarMsg('Please select an image file.'); return }
+    if (file.size > 5 * 1024 * 1024) { setAvatarMsg('Image must be under 5 MB.'); return }
+    setAvatarUploading(true); setAvatarMsg(null)
+    const supabase = createClient()
+    const { error: upErr } = await supabase.storage.from('avatars').upload(p.id, file, { upsert: true, contentType: file.type })
+    if (upErr) { setAvatarMsg('Upload failed: ' + upErr.message); setAvatarUploading(false); return }
+    const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(p.id)
+    const { error: dbErr } = await supabase.from('profielen').update({ avatar_url: publicUrl }).eq('id', p.id)
+    if (dbErr) { setAvatarMsg('Saved photo but could not update profile.'); setAvatarUploading(false); return }
+    setAvatarUrl(publicUrl + '?t=' + Date.now())
+    setAvatarMsg('Photo updated!')
+    setAvatarUploading(false)
+  }
 
   // Delete account
   const [showDelete,  setShowDelete]  = useState(false)
@@ -450,6 +474,36 @@ export default function DashboardTabs({ p, positie, totaalSpelers, winPct, histo
       {tab === 'settings' && (
         <div className="space-y-5">
 
+          {/* Profile photo */}
+          <div style={cardStyle} className="p-6">
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-white/30 mb-5">Profile photo</p>
+            <div className="flex items-center gap-5">
+              <div className="relative flex-shrink-0">
+                {avatarUrl ? (
+                  <img src={avatarUrl} alt="Avatar" className="w-20 h-20 rounded-full object-cover"
+                    style={{ border: '2px solid rgba(245,166,35,0.35)' }} />
+                ) : (
+                  <div className="w-20 h-20 rounded-full flex items-center justify-center text-2xl font-bold"
+                    style={{ background: 'rgba(245,166,35,0.12)', border: '2px solid rgba(245,166,35,0.25)', color: '#f5a623' }}>
+                    {p.naam.charAt(0).toUpperCase()}
+                  </div>
+                )}
+              </div>
+              <div className="space-y-2">
+                <input ref={avatarInputRef} type="file" accept="image/*" className="hidden" onChange={handleAvatarUpload} />
+                <button onClick={() => avatarInputRef.current?.click()} disabled={avatarUploading}
+                  className="px-4 py-2 rounded-xl text-sm font-semibold transition-all hover:opacity-80"
+                  style={{ background: 'rgba(245,166,35,0.15)', border: '0.5px solid rgba(245,166,35,0.35)', color: '#f5a623', cursor: avatarUploading ? 'not-allowed' : 'pointer' }}>
+                  {avatarUploading ? 'Uploading…' : avatarUrl ? 'Change photo' : 'Upload photo'}
+                </button>
+                {avatarMsg && (
+                  <p className="text-xs" style={{ color: avatarMsg.startsWith('Photo') ? '#6fcf97' : '#f0a070' }}>{avatarMsg}</p>
+                )}
+                <p className="text-xs text-white/30">JPG, PNG or WebP · max 5 MB</p>
+              </div>
+            </div>
+          </div>
+
           {/* Profile information */}
           <div style={cardStyle} className="p-6">
             <p className="text-[10px] font-semibold uppercase tracking-widest text-white/30 mb-5">Profile</p>
@@ -514,7 +568,7 @@ export default function DashboardTabs({ p, positie, totaalSpelers, winPct, histo
                 },
                 {
                   label: 'Blur name on leaderboard',
-                  sub: 'Your name appears blurred on the public rankings',
+                  sub: 'Your name and profile photo appear blurred on the public rankings',
                   control: <BlurNameToggle initialValue={p.blur_name ?? false} />,
                 },
                 {
